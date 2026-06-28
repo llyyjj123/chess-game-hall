@@ -15,6 +15,10 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "dependencies": {
+    "express": "^4.18.0",
+    "openai": "^4.0.0"
+  },
   "bugs": {
     "url": "https://github.com/llyyjj123/chess-game-hall/issues"
   },

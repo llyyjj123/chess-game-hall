@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const OpenAI = require('openai');
 const path = require('path');
