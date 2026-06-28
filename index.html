@@ -2277,26 +2277,6 @@ class ChessGame {
       }
     }, 250 + Math.random() * 150);
   }
-          }
-          this.board = nb;
-          if (captured) this.capturedByBlack.push(captured);
-          this.moveHistory.push({ move: matched, captured, boardBefore, oldEnPassant });
-          this.lastMove = matched;
-          this.currentTurn = IC_WHITE;
-          this.aiThinking = false;
-          updateMoveLog(notation + ' (AI)');
-          this._checkGameEnd(IC_BLACK);
-          this.render();
-          updateUI();
-        } else {
-          console.warn('[DeepSeek] Invalid move, falling back to local AI');
-          doLocalAI();
-        }
-      })();
-    } else {
-      doLocalAI();
-    }
-  }
 
   _checkGameEnd(justMoved) {
     const next = 1 - justMoved;
