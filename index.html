@@ -968,7 +968,7 @@ function updateMPPanel() {
     const isWaiting = mp.roomId && !activeGame?.multiplayer;
     rp.innerHTML = `
       <div class="mp-room-code">${mp.roomId}</div>
-      <div class="mp-status ${isWaiting ? 'waiting' : 'connected'}">${isWaiting ? '⏳ 等待对手加入...' : '✅ 已连接 · 你是' + (mp.mySide === 'red' || mp.mySide === 'black' && activeGameId !== 'chinese-chess' && activeGameId !== 'chess' ? '黑方' : mp.mySide === 'red' ? '红方' : mp.mySide === 'white' ? '白方' : mp.mySide)}</div>
+      <div class="mp-status ${isWaiting ? 'waiting' : 'connected'}">${isWaiting ? '⏳ 等待对手加入...' : '✅ 已连接 · 你是' + getMPSideLabel(mp.mySide, activeGameId)}</div>
       <button class="btn" id="mpLeaveBtn" style="width:100%">离开房间</button>`;
     document.getElementById('mpLeaveBtn').onclick = () => {
       mp.leaveRoom();
@@ -1378,6 +1378,7 @@ class ChineseChessGame {
     this.currentTurn = RED; this.selectedPiece = null; this.validMoves = [];
     this.moveHistory = []; this.capturedByRed = []; this.capturedByBlack = [];
     this.gameOver = false; this.gameResult = ''; this.aiThinking = false; this.lastMove = null;
+    this.multiplayer = false; this.mySide = null; this.opponentSide = null;
     currentRenderFn = () => this.render();
     this.render();
     updateUI();
@@ -1513,6 +1514,11 @@ class ChineseChessGame {
     if (this.gameOver) return this.gameResult;
     if (this.aiThinking) return '🤔 电脑思考中...';
     if (this.selectedPiece) return '请点击目标位置走棋';
+    if (this.multiplayer) {
+      const mySideNum = this.mySide === 'red' ? RED : BLACK;
+      const isMyTurn = this.currentTurn === mySideNum;
+      return this.currentTurn === RED ? `红方走棋${isMyTurn ? ' (你)' : ' (对手)'}` : `黑方走棋${isMyTurn ? ' (你)' : ' (对手)'}`;
+    }
     return this.currentTurn === RED ? '红方走棋' : '黑方走棋';
   }
   getHintText() { return '点击己方棋子选中 · 点击目标位置走棋 · Esc取消'; }
@@ -1907,6 +1913,7 @@ class GomokuGame {
     this.board = Array.from({length: GK_SIZE}, () => Array(GK_SIZE).fill(0));
     this.currentPlayer = 1; this.moveHistory = []; this.gameOver = false; this.gameResult = '';
     this.aiThinking = false; this.lastMove = null; this.winningCells = []; this.statusDotClass = 'white';
+    this.multiplayer = false; this.mySide = null; this.opponentSide = null;
     currentRenderFn = () => this.render();
     this.render();
     updateUI();
@@ -2624,6 +2631,7 @@ class ChessGame {
     this.gameOver = false; this.gameResult = ''; this.aiThinking = false; this.lastMove = null;
     this.castlingRights = { wK: true, wQ: true, bK: true, bQ: true };
     this.enPassantTarget = null; this.promotionPending = null;
+    this.multiplayer = false; this.mySide = null; this.opponentSide = null;
     currentRenderFn = () => this.render();
     this.render();
     updateUI();
@@ -2787,6 +2795,11 @@ class ChessGame {
     if (this.gameOver) return this.gameResult;
     if (this.aiThinking) return '🤔 电脑思考中...';
     if (this.selectedPiece) return '请点击目标位置走棋';
+    if (this.multiplayer) {
+      const mySideNum = this.mySide === 'white' ? IC_WHITE : IC_BLACK;
+      const isMyTurn = this.currentTurn === mySideNum;
+      return this.currentTurn === IC_WHITE ? `白方走棋${isMyTurn ? ' (你)' : ' (对手)'}` : `黑方走棋${isMyTurn ? ' (你)' : ' (对手)'}`;
+    }
     return this.currentTurn === IC_WHITE ? '白方走棋' : '黑方走棋 (AI)';
   }
   getHintText() { return '点击己方棋子选中 · 点击目标位置走棋 · 兵到底线自动升变'; }
@@ -3272,6 +3285,7 @@ class GoGame {
     this.passCount = 0; this.gameOver = false; this.gameResult = '';
     this.aiThinking = false; this.lastMove = null;
     this.blackPrisoners = 0; this.whitePrisoners = 0;
+    this.multiplayer = false; this.mySide = null; this.opponentSide = null;
     this.statusDotClass = 'white';
     currentRenderFn = () => this.render();
     this._updatePrisonerDisplay();
@@ -3299,14 +3313,17 @@ class GoGame {
     if (data.row < 0 || data.row >= this.boardSize || data.col < 0 || data.col >= this.boardSize) return;
     if (this.board[data.row][data.col] !== 0) return;
     if (this.koPoint && this.koPoint.row === data.row && this.koPoint.col === data.col) return;
+    const oppNum = this.mySide === 'black' ? 2 : 1;
+    this.currentPlayer = oppNum;
     this._placeStone(data.row, data.col);
-    this.currentPlayer = this.mySide === 'black' ? 1 : 2;
     this.render();
     updateUI();
   }
 
   applyOpponentPass() {
     if (this.gameOver) return;
+    const oppNum = this.mySide === 'black' ? 2 : 1;
+    this.currentPlayer = oppNum;
     this.passCount++;
     updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
     if (this.passCount >= 2) {

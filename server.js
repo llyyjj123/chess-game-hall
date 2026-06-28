@@ -55,8 +55,8 @@ io.on('connection', (socket) => {
     if (room.joiner) return cb({ error: '房间已满' });
     if (room.gameType !== gameType) return cb({ error: '游戏类型不匹配' });
 
-    const sides = { red: 'black', black: 'red', white: 'black', black: 'white' };
-    const joinerSide = sides[room.host.side];
+    const OPPOSITE = { red: 'black', black: 'red', white: 'black' };
+    const joinerSide = OPPOSITE[room.host.side];
 
     room.joiner = { socketId: socket.id, side: joinerSide };
     room.status = 'playing';
