@@ -1568,7 +1568,7 @@ class GomokuGame {
 
   handleClick(mx, my) {
     if (this.gameOver || this.aiThinking) return;
-    if (this.multiplayer && this.currentPlayer !== this.mySide) return;
+    if (this.multiplayer && this.currentPlayer !== (this.mySide === 'black' ? 1 : 2)) return;
     const cs = this.cellSize, px = this.padX, py = this.padY;
     // Find nearest grid point
     let br = -1, bc = -1, bd = Infinity;
@@ -2841,7 +2841,7 @@ class GoGame {
 
   handleClick(mx, my) {
     if (this.gameOver || this.aiThinking) return;
-    if (this.multiplayer && this.currentPlayer !== this.mySide) return;
+    if (this.multiplayer && this.currentPlayer !== (this.mySide === 'black' ? 1 : 2)) return;
     const cs = this.cellSize, px = this.padX, py = this.padY, bs = this.boardSize;
     let br = -1, bc = -1, bd = Infinity;
     for (let r = 0; r < bs; r++) {
@@ -2999,7 +2999,7 @@ class GoGame {
 
   pass() {
     if (this.gameOver || this.aiThinking) return;
-    if (this.multiplayer && this.currentPlayer !== this.mySide) return;
+    if (this.multiplayer && this.currentPlayer !== (this.mySide === 'black' ? 1 : 2)) return;
     this.passCount++;
     updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
 
