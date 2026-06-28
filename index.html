@@ -1898,7 +1898,7 @@ class GomokuGame {
     if (this.board[data.row][data.col] !== 0) return;
     const oppSide = this.mySide === 'black' ? 2 : 1;
     this._placeStone(data.row, data.col, oppSide);
-    this.currentPlayer = this.mySide;
+    this.currentPlayer = this.mySide === 'black' ? 1 : 2;
     this.render();
     updateUI();
   }
@@ -2031,6 +2031,10 @@ class GomokuGame {
   getStatusText() {
     if (this.gameOver) return this.gameResult;
     if (this.aiThinking) return '🤔 电脑思考中...';
+    if (this.multiplayer) {
+      const myNum = this.mySide === 'black' ? 1 : 2;
+      return this.currentPlayer === myNum ? `黑方落子 (你)` : `白方落子 (对手)`;
+    }
     return this.currentPlayer === 1 ? '黑方落子 (你)' : '白方落子 (AI)';
   }
   getHintText() { return '点击交叉点落子 · 黑先 · 五子连珠胜'; }
@@ -3295,9 +3299,8 @@ class GoGame {
     if (data.row < 0 || data.row >= this.boardSize || data.col < 0 || data.col >= this.boardSize) return;
     if (this.board[data.row][data.col] !== 0) return;
     if (this.koPoint && this.koPoint.row === data.row && this.koPoint.col === data.col) return;
-    const oppSide = this.mySide === 'black' ? 2 : 1;
     this._placeStone(data.row, data.col);
-    this.currentPlayer = this.mySide;
+    this.currentPlayer = this.mySide === 'black' ? 1 : 2;
     this.render();
     updateUI();
   }
@@ -3310,7 +3313,7 @@ class GoGame {
       this._endGame();
       return;
     }
-    this.currentPlayer = this.mySide;
+    this.currentPlayer = this.mySide === 'black' ? 1 : 2;
     updateUI();
     this.render();
   }
@@ -3445,6 +3448,10 @@ class GoGame {
   getStatusText() {
     if (this.gameOver) return this.gameResult;
     if (this.aiThinking) return '🤔 电脑思考中...';
+    if (this.multiplayer) {
+      const myNum = this.mySide === 'black' ? 1 : 2;
+      return this.currentPlayer === myNum ? '黑方落子 (你)' : '白方落子 (对手)';
+    }
     return this.currentPlayer === 1 ? '黑方落子' : '白方落子 (AI)';
   }
   getHintText() { return `点击交叉点落子 · 黑先 · 两次停着终局 · 白贴6.5目`; }
