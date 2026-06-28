@@ -739,7 +739,16 @@ function updateSidePanel() {
 
 function updateUI() {
   if (!activeGame) return;
-  document.getElementById('statusDot').className = 'status-dot ' + (activeGame.statusDotClass || 'red');
+  let dotClass = activeGame.statusDotClass || 'red';
+  if (activeGame.multiplayer) {
+    const isMyTurn = activeGame.currentPlayer === (activeGame.mySide === 'black' ? 1 : 2);
+    dotClass = isMyTurn ? 'red' : 'white';
+  } else if (activeGame.currentPlayer !== undefined) {
+    dotClass = activeGame.currentPlayer === 1 ? 'red' : 'white';
+  } else if (activeGame.currentTurn !== undefined) {
+    dotClass = activeGame.currentTurn === 0 ? 'red' : 'black';
+  }
+  document.getElementById('statusDot').className = 'status-dot ' + dotClass;
   document.getElementById('statusText').textContent = activeGame.getStatusText();
   document.getElementById('moveHint').textContent = activeGame.getHintText ? activeGame.getHintText() : '';
 }
@@ -2039,8 +2048,9 @@ class GomokuGame {
     if (this.gameOver) return this.gameResult;
     if (this.aiThinking) return '🤔 电脑思考中...';
     if (this.multiplayer) {
-      const myNum = this.mySide === 'black' ? 1 : 2;
-      return this.currentPlayer === myNum ? `黑方落子 (你)` : `白方落子 (对手)`;
+      const isMyTurn = this.currentPlayer === (this.mySide === 'black' ? 1 : 2);
+      const sideName = this.currentPlayer === 1 ? '黑方' : '白方';
+      return `${sideName}落子${isMyTurn ? ' (你)' : ' (对手)'}`;
     }
     return this.currentPlayer === 1 ? '黑方落子 (你)' : '白方落子 (AI)';
   }
@@ -3466,8 +3476,9 @@ class GoGame {
     if (this.gameOver) return this.gameResult;
     if (this.aiThinking) return '🤔 电脑思考中...';
     if (this.multiplayer) {
-      const myNum = this.mySide === 'black' ? 1 : 2;
-      return this.currentPlayer === myNum ? '黑方落子 (你)' : '白方落子 (对手)';
+      const isMyTurn = this.currentPlayer === (this.mySide === 'black' ? 1 : 2);
+      const sideName = this.currentPlayer === 1 ? '黑方' : '白方';
+      return `${sideName}落子${isMyTurn ? ' (你)' : ' (对手)'}`;
     }
     return this.currentPlayer === 1 ? '黑方落子' : '白方落子 (AI)';
   }
