@@ -1,3 +1,5 @@
 Dockerfile
 .dockerignore
 .git
+node_modules
+.env

@@ -674,7 +674,21 @@ function switchGame(gameId) {
 function updateSidePanel() {
   if (!activeGame) return;
   const panelEl = document.getElementById('panelControls');
-  panelEl.innerHTML = activeGame.getPanelHTML ? activeGame.getPanelHTML() : '';
+  const aiModeHTML = `<div><div class="section-title">AI 引擎</div>
+    <div class="diff-group" id="aiModeGroup">
+      <button class="diff-btn ${aiMode === 'local' ? 'active' : ''}" data-mode="local">本地 AI</button>
+      <button class="diff-btn ${aiMode === 'deepseek' ? 'active' : ''}" data-mode="deepseek">🧠 DeepSeek</button>
+    </div></div>`;
+  panelEl.innerHTML = aiModeHTML + (activeGame.getPanelHTML ? activeGame.getPanelHTML() : '');
+
+  // Bind AI mode switch
+  document.getElementById('aiModeGroup').addEventListener('click', function(e) {
+    const btn = e.target.closest('.diff-btn');
+    if (!btn) return;
+    this.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    aiMode = btn.dataset.mode;
+  });
 
   // Re-bind panel events
   if (activeGame.bindPanelEvents) activeGame.bindPanelEvents();
@@ -787,6 +801,35 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'u' || e.key === 'U') document.getElementById('btnUndo').click();
   if (e.key === 'Escape' && activeGame && activeGame.clearSelection) activeGame.clearSelection();
 });
+
+// ═══════════════════════════════════════════════════════
+//  DEEPSEEK AI INTEGRATION
+// ═══════════════════════════════════════════════════════
+
+let aiMode = 'local'; // 'local' or 'deepseek'
+
+async function callDeepSeekAPI(gameType, board, options = {}) {
+  try {
+    const resp = await fetch('/api/move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gameType,
+        board,
+        currentTurn: options.currentTurn,
+        castlingRights: options.castlingRights,
+        enPassant: options.enPassant,
+        boardSize: options.boardSize,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    return data.move;
+  } catch (e) {
+    console.error('[DeepSeek API Error]', e);
+    return null;
+  }
+}
 
 console.log('🎮 棋类游戏大厅已就绪');
 console.log('   Games: 象棋 | 五子棋 | 国际象棋 | 围棋');
@@ -1086,43 +1129,78 @@ class ChineseChessGame {
   _scheduleAI() {
     this.aiThinking = true;
     updateUI();
-    setTimeout(() => {
-      if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-      const move = this._getAIMove();
-      if (move) {
-        const piece = this.board[move.fromRow][move.fromCol];
-        const notation = this._getMoveNotation(move, this.board);
 
-        // Highlight source then pulse destination (simple visual)
-        const from = getBoardXY(move.fromRow, move.fromCol);
-        const to = getBoardXY(move.toRow, move.toCol);
-        animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
-        setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
-
-        // Update board immediately (animation is visual only)
-        const boardBefore = this._cloneBoard(this.board);
-        const { board: nb, captured } = this._makeMove(this.board, move);
-        this.board = nb;
-        if (captured) this.capturedByBlack.push(captured);
-        this.moveHistory.push({ move, captured, boardBefore });
-        this.lastMove = move;
-        this.currentTurn = RED;
-        this.aiThinking = false;
-        updateMoveLog(notation);
-        this._checkGameEnd(BLACK);
-        this.render();
-        updateUI();
-      } else {
-        this.aiThinking = false;
-        // Check if game ended
-        const allMoves = this._allLegalMoves(this.board, BLACK);
-        if (allMoves.length === 0) {
-          this.gameOver = true;
-          this.gameResult = this._isInCheck(this.board, BLACK) ? '红方获胜！将死！' : '红方获胜！困毙黑方';
+    const doLocalAI = () => {
+      setTimeout(() => {
+        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+        const move = this._getAIMove();
+        if (move) {
+          const piece = this.board[move.fromRow][move.fromCol];
+          const notation = this._getMoveNotation(move, this.board);
+          const from = getBoardXY(move.fromRow, move.fromCol);
+          const to = getBoardXY(move.toRow, move.toCol);
+          animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
+          setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
+          const boardBefore = this._cloneBoard(this.board);
+          const { board: nb, captured } = this._makeMove(this.board, move);
+          this.board = nb;
+          if (captured) this.capturedByBlack.push(captured);
+          this.moveHistory.push({ move, captured, boardBefore });
+          this.lastMove = move;
+          this.currentTurn = RED;
+          this.aiThinking = false;
+          updateMoveLog(notation);
+          this._checkGameEnd(BLACK);
+          this.render();
+          updateUI();
+        } else {
+          this.aiThinking = false;
+          const allMoves = this._allLegalMoves(this.board, BLACK);
+          if (allMoves.length === 0) {
+            this.gameOver = true;
+            this.gameResult = this._isInCheck(this.board, BLACK) ? '红方获胜！将死！' : '红方获胜！困毙黑方';
+          }
+          updateUI();
         }
-        updateUI();
-      }
-    }, 250 + Math.random() * 150);
+      }, 250 + Math.random() * 150);
+    };
+
+    if (aiMode === 'deepseek') {
+      (async () => {
+        const aiMove = await callDeepSeekAPI('chinese-chess', this.board);
+        if (this.gameOver || !aiMove) { this.aiThinking = false; updateUI(); return; }
+        const legalMoves = this._allLegalMoves(this.board, BLACK);
+        const matched = legalMoves.find(m =>
+          m.fromRow === aiMove.from[0] && m.fromCol === aiMove.from[1] &&
+          m.toRow === aiMove.to[0] && m.toCol === aiMove.to[1]
+        );
+        if (matched) {
+          const piece = this.board[matched.fromRow][matched.fromCol];
+          const notation = this._getMoveNotation(matched, this.board);
+          const from = getBoardXY(matched.fromRow, matched.fromCol);
+          const to = getBoardXY(matched.toRow, matched.toCol);
+          animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
+          setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
+          const boardBefore = this._cloneBoard(this.board);
+          const { board: nb, captured } = this._makeMove(this.board, matched);
+          this.board = nb;
+          if (captured) this.capturedByBlack.push(captured);
+          this.moveHistory.push({ move: matched, captured, boardBefore });
+          this.lastMove = matched;
+          this.currentTurn = RED;
+          this.aiThinking = false;
+          updateMoveLog(notation + ' (AI)');
+          this._checkGameEnd(BLACK);
+          this.render();
+          updateUI();
+        } else {
+          console.warn('[DeepSeek] Invalid move, falling back to local AI');
+          doLocalAI();
+        }
+      })();
+    } else {
+      doLocalAI();
+    }
   }
 
   _checkGameEnd(justMoved) {
@@ -1472,17 +1550,41 @@ class GomokuGame {
   _scheduleAI() {
     this.aiThinking = true;
     updateUI();
-    setTimeout(() => {
-      if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-      const move = this._getAIMove();
-      if (move.row >= 0) {
-        this._placeStone(move.row, move.col, 3 - this.humanColor);
-        this.currentPlayer = this.humanColor;
-      }
-      this.aiThinking = false;
-      updateUI();
-      this.render();
-    }, 150 + Math.random() * 150);
+
+    const doLocalAI = () => {
+      setTimeout(() => {
+        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+        const move = this._getAIMove();
+        if (move.row >= 0) {
+          this._placeStone(move.row, move.col, 3 - this.humanColor);
+          this.currentPlayer = this.humanColor;
+        }
+        this.aiThinking = false;
+        updateUI();
+        this.render();
+      }, 150 + Math.random() * 150);
+    };
+
+    if (aiMode === 'deepseek') {
+      (async () => {
+        const aiMove = await callDeepSeekAPI('gomoku', this.board);
+        if (this.gameOver || !aiMove || aiMove.pass) {
+          this.aiThinking = false; updateUI(); return;
+        }
+        if (aiMove.row >= 0 && aiMove.row < GK_SIZE && aiMove.col >= 0 && aiMove.col < GK_SIZE && this.board[aiMove.row][aiMove.col] === 0) {
+          this._placeStone(aiMove.row, aiMove.col, 3 - this.humanColor);
+          this.currentPlayer = this.humanColor;
+          this.aiThinking = false;
+          updateUI();
+          this.render();
+        } else {
+          console.warn('[DeepSeek] Invalid move, falling back to local AI');
+          doLocalAI();
+        }
+      })();
+    } else {
+      doLocalAI();
+    }
   }
 
   newGame() {
@@ -2039,60 +2141,118 @@ class ChessGame {
   _scheduleAI() {
     this.aiThinking = true;
     updateUI();
-    setTimeout(() => {
-      if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-      const move = this._getAIMove();
-      if (move) {
-        const piece = this.board[move.fromRow][move.fromCol];
-        const notation = this._notation(move, this.board);
 
-        // Simple visual: pulse source then destination
-        const from = getBoardXY(move.fromRow, move.fromCol);
-        const to = getBoardXY(move.toRow, move.toCol);
-        animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
-        setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
-
-        // Update board immediately
-        const boardBefore = this._cloneBoard(this.board);
-        const oldEnPassant = this.enPassantTarget;
-        this.enPassantTarget = null;
-        if (piece.type === IC_PAWN && Math.abs(move.toRow - move.fromRow) === 2) {
-          this.enPassantTarget = { row: (move.fromRow + move.toRow) / 2, col: move.fromCol };
-        }
-        let captured = this.board[move.toRow][move.toCol];
-        const nb = this._cloneBoard(this.board);
-        if (move.enPassant) {
-          captured = nb[move.fromRow][move.toCol];
-          nb[move.fromRow][move.toCol] = null;
-        }
-        nb[move.toRow][move.toCol] = nb[move.fromRow][move.fromCol];
-        nb[move.fromRow][move.fromCol] = null;
-        const promoRow = piece.side === IC_BLACK ? 7 : 0;
-        if (piece.type === IC_PAWN && move.toRow === promoRow) {
-          nb[move.toRow][move.toCol].type = IC_QUEEN;
-        }
-        this.board = nb;
-        if (captured) this.capturedByBlack.push(captured);
-        this.moveHistory.push({ move, captured, boardBefore, oldEnPassant });
-        this.lastMove = move;
-        this.currentTurn = IC_WHITE;
-        this.aiThinking = false;
-        updateMoveLog(notation);
-        this._checkGameEnd(IC_BLACK);
-        this.render();
-        updateUI();
-      } else {
-        this.aiThinking = false;
-        const allMoves = this._allLegalMoves(this.board, IC_BLACK, this.castlingRights, this.enPassantTarget);
-        if (allMoves.length === 0) {
-          this.gameOver = true;
-          this.gameResult = this._isInCheck(this.board, IC_BLACK) ? '白方获胜！将杀！' : '平局！逼和';
+    const doLocalAI = () => {
+      setTimeout(() => {
+        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+        const move = this._getAIMove();
+        if (move) {
+          const piece = this.board[move.fromRow][move.fromCol];
+          const notation = this._notation(move, this.board);
+          const from = getBoardXY(move.fromRow, move.fromCol);
+          const to = getBoardXY(move.toRow, move.toCol);
+          animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
+          setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
+          const boardBefore = this._cloneBoard(this.board);
+          const oldEnPassant = this.enPassantTarget;
+          this.enPassantTarget = null;
+          if (piece.type === IC_PAWN && Math.abs(move.toRow - move.fromRow) === 2) {
+            this.enPassantTarget = { row: (move.fromRow + move.toRow) / 2, col: move.fromCol };
+          }
+          let captured = this.board[move.toRow][move.toCol];
+          const nb = this._cloneBoard(this.board);
+          if (move.enPassant) {
+            captured = nb[move.fromRow][move.toCol];
+            nb[move.fromRow][move.toCol] = null;
+          }
+          nb[move.toRow][move.toCol] = nb[move.fromRow][move.fromCol];
+          nb[move.fromRow][move.fromCol] = null;
+          const promoRow = piece.side === IC_BLACK ? 7 : 0;
+          if (piece.type === IC_PAWN && move.toRow === promoRow) {
+            nb[move.toRow][move.toCol].type = IC_QUEEN;
+          }
+          this.board = nb;
+          if (captured) this.capturedByBlack.push(captured);
+          this.moveHistory.push({ move, captured, boardBefore, oldEnPassant });
+          this.lastMove = move;
+          this.currentTurn = IC_WHITE;
+          this.aiThinking = false;
+          updateMoveLog(notation);
+          this._checkGameEnd(IC_BLACK);
+          this.render();
+          updateUI();
         } else {
-          this._doAIMoveDirect(allMoves[Math.floor(Math.random() * allMoves.length)]);
+          this.aiThinking = false;
+          const allMoves = this._allLegalMoves(this.board, IC_BLACK, this.castlingRights, this.enPassantTarget);
+          if (allMoves.length === 0) {
+            this.gameOver = true;
+            this.gameResult = this._isInCheck(this.board, IC_BLACK) ? '白方获胜！将杀！' : '平局！逼和';
+          } else {
+            this._doAIMoveDirect(allMoves[Math.floor(Math.random() * allMoves.length)]);
+          }
+          updateUI();
         }
-        updateUI();
-      }
-    }, 250 + Math.random() * 150);
+      }, 250 + Math.random() * 150);
+    };
+
+    if (aiMode === 'deepseek') {
+      (async () => {
+        const aiMove = await callDeepSeekAPI('chess', this.board, {
+          currentTurn: this.currentTurn,
+          castlingRights: this.castlingRights,
+          enPassant: this.enPassantTarget,
+        });
+        if (this.gameOver || !aiMove) { this.aiThinking = false; updateUI(); return; }
+        const colMap = {a:0,b:1,c:2,d:3,e:4,f:5,g:6,h:7};
+        const fromCol = colMap[aiMove.from[0]], fromRow = 8 - parseInt(aiMove.from[1]);
+        const toCol = colMap[aiMove.to[0]], toRow = 8 - parseInt(aiMove.to[1]);
+        const legalMoves = this._allLegalMoves(this.board, IC_BLACK, this.castlingRights, this.enPassantTarget);
+        const matched = legalMoves.find(m =>
+          m.fromRow === fromRow && m.fromCol === fromCol && m.toRow === toRow && m.toCol === toCol
+        );
+        if (matched) {
+          const piece = this.board[matched.fromRow][matched.fromCol];
+          const notation = this._notation(matched, this.board);
+          const from = getBoardXY(matched.fromRow, matched.fromCol);
+          const to = getBoardXY(matched.toRow, matched.toCol);
+          animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
+          setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
+          const boardBefore = this._cloneBoard(this.board);
+          const oldEnPassant = this.enPassantTarget;
+          this.enPassantTarget = null;
+          if (piece.type === IC_PAWN && Math.abs(matched.toRow - matched.fromRow) === 2) {
+            this.enPassantTarget = { row: (matched.fromRow + matched.toRow) / 2, col: matched.fromCol };
+          }
+          let captured = this.board[matched.toRow][matched.toCol];
+          const nb = this._cloneBoard(this.board);
+          if (matched.enPassant) {
+            captured = nb[matched.fromRow][matched.toCol];
+            nb[matched.fromRow][matched.toCol] = null;
+          }
+          nb[matched.toRow][matched.toCol] = nb[matched.fromRow][matched.fromCol];
+          nb[matched.fromRow][matched.fromCol] = null;
+          const promoRow = piece.side === IC_BLACK ? 7 : 0;
+          if (piece.type === IC_PAWN && matched.toRow === promoRow) {
+            nb[matched.toRow][matched.toCol].type = IC_QUEEN;
+          }
+          this.board = nb;
+          if (captured) this.capturedByBlack.push(captured);
+          this.moveHistory.push({ move: matched, captured, boardBefore, oldEnPassant });
+          this.lastMove = matched;
+          this.currentTurn = IC_WHITE;
+          this.aiThinking = false;
+          updateMoveLog(notation + ' (AI)');
+          this._checkGameEnd(IC_BLACK);
+          this.render();
+          updateUI();
+        } else {
+          console.warn('[DeepSeek] Invalid move, falling back to local AI');
+          doLocalAI();
+        }
+      })();
+    } else {
+      doLocalAI();
+    }
   }
 
   _checkGameEnd(justMoved) {
@@ -2672,25 +2832,59 @@ class GoGame {
   _scheduleAI() {
     this.aiThinking = true;
     updateUI();
-    setTimeout(() => {
-      if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-      // Decide whether to pass or play
-      const move = this._getAIMove();
-      if (move.row >= 0 && !this._isSuicide(move.row, move.col, 3 - this.humanColor)) {
-        this._placeStone(move.row, move.col);
-      } else {
-        this.passCount++;
-        updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
-        if (this.passCount >= 2) {
-          this._endGame();
-          updateUI();
+
+    const doLocalAI = () => {
+      setTimeout(() => {
+        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+        const move = this._getAIMove();
+        if (move.row >= 0 && !this._isSuicide(move.row, move.col, 3 - this.humanColor)) {
+          this._placeStone(move.row, move.col);
+        } else {
+          this.passCount++;
+          updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
+          if (this.passCount >= 2) {
+            this._endGame();
+            updateUI();
+          }
         }
-      }
-      this.currentPlayer = this.humanColor;
-      this.aiThinking = false;
-      updateUI();
-      this.render();
-    }, 200 + Math.random() * 200);
+        this.currentPlayer = this.humanColor;
+        this.aiThinking = false;
+        updateUI();
+        this.render();
+      }, 200 + Math.random() * 200);
+    };
+
+    if (aiMode === 'deepseek') {
+      (async () => {
+        const aiMove = await callDeepSeekAPI('go', this.board, { boardSize: this.boardSize });
+        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+        if (aiMove && aiMove.pass) {
+          this.passCount++;
+          updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
+          if (this.passCount >= 2) {
+            this._endGame();
+          }
+          this.currentPlayer = this.humanColor;
+          this.aiThinking = false;
+          updateUI();
+          this.render();
+          return;
+        }
+        if (aiMove && aiMove.row >= 0 && aiMove.row < this.boardSize && aiMove.col >= 0 && aiMove.col < this.boardSize &&
+            this.board[aiMove.row][aiMove.col] === 0 && !this._isSuicide(aiMove.row, aiMove.col, 3 - this.humanColor)) {
+          this._placeStone(aiMove.row, aiMove.col);
+          this.currentPlayer = this.humanColor;
+          this.aiThinking = false;
+          updateUI();
+          this.render();
+        } else {
+          console.warn('[DeepSeek] Invalid move, falling back to local AI');
+          doLocalAI();
+        }
+      })();
+    } else {
+      doLocalAI();
+    }
   }
 
   newGame() {

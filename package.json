@@ -1,0 +1,22 @@
+{
+  "name": "chess-game-hall",
+  "version": "1.0.0",
+  "description": "Chess game hall with DeepSeek AI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llyyjj123/chess-game-hall.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/llyyjj123/chess-game-hall/issues"
+  },
+  "homepage": "https://github.com/llyyjj123/chess-game-hall#readme"
+}
