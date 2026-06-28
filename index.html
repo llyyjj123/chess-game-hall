@@ -674,21 +674,7 @@ function switchGame(gameId) {
 function updateSidePanel() {
   if (!activeGame) return;
   const panelEl = document.getElementById('panelControls');
-  const aiModeHTML = `<div><div class="section-title">AI 引擎</div>
-    <div class="diff-group" id="aiModeGroup">
-      <button class="diff-btn ${aiMode === 'local' ? 'active' : ''}" data-mode="local">本地 AI</button>
-      <button class="diff-btn ${aiMode === 'deepseek' ? 'active' : ''}" data-mode="deepseek">🧠 DeepSeek</button>
-    </div></div>`;
-  panelEl.innerHTML = aiModeHTML + (activeGame.getPanelHTML ? activeGame.getPanelHTML() : '');
-
-  // Bind AI mode switch
-  document.getElementById('aiModeGroup').addEventListener('click', function(e) {
-    const btn = e.target.closest('.diff-btn');
-    if (!btn) return;
-    this.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    aiMode = btn.dataset.mode;
-  });
+  panelEl.innerHTML = activeGame.getPanelHTML ? activeGame.getPanelHTML() : '';
 
   // Re-bind panel events
   if (activeGame.bindPanelEvents) activeGame.bindPanelEvents();
@@ -801,35 +787,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'u' || e.key === 'U') document.getElementById('btnUndo').click();
   if (e.key === 'Escape' && activeGame && activeGame.clearSelection) activeGame.clearSelection();
 });
-
-// ═══════════════════════════════════════════════════════
-//  DEEPSEEK AI INTEGRATION
-// ═══════════════════════════════════════════════════════
-
-let aiMode = 'local'; // 'local' or 'deepseek'
-
-async function callDeepSeekAPI(gameType, board, options = {}) {
-  try {
-    const resp = await fetch('/api/move', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        gameType,
-        board,
-        currentTurn: options.currentTurn,
-        castlingRights: options.castlingRights,
-        enPassant: options.enPassant,
-        boardSize: options.boardSize,
-      }),
-    });
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error);
-    return data.move;
-  } catch (e) {
-    console.error('[DeepSeek API Error]', e);
-    return null;
-  }
-}
 
 console.log('🎮 棋类游戏大厅已就绪');
 console.log('   Games: 象棋 | 五子棋 | 国际象棋 | 围棋');
@@ -1065,10 +1022,20 @@ class ChineseChessGame {
       }
       return bm;
     }
-    let bm=all[0],bs=-Infinity;
-    for(const m of this._orderMoves(this.board,[...all])){
+    if(this.difficulty===2){
+      let bm=all[0],bs=-Infinity;
+      for(const m of this._orderMoves(this.board,[...all])){
+        const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
+        const sc=this._minimax(s,2,-Infinity,Infinity,false,BLACK);if(sc>bs){bs=sc;bm=m;}
+      }
+      return bm;
+    }
+    // Expert: depth 3 with move pruning
+    const ord=this._orderMoves(this.board,[...all]).slice(0,20);
+    let bm=ord[0],bs=-Infinity;
+    for(const m of ord){
       const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
-      const sc=this._minimax(s,2,-Infinity,Infinity,false,BLACK);if(sc>bs){bs=sc;bm=m;}
+      const sc=this._minimax(s,3,-Infinity,Infinity,false,BLACK);if(sc>bs){bs=sc;bm=m;}
     }
     return bm;
   }
@@ -1130,77 +1097,39 @@ class ChineseChessGame {
     this.aiThinking = true;
     updateUI();
 
-    const doLocalAI = () => {
-      setTimeout(() => {
-        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-        const move = this._getAIMove();
-        if (move) {
-          const piece = this.board[move.fromRow][move.fromCol];
-          const notation = this._getMoveNotation(move, this.board);
-          const from = getBoardXY(move.fromRow, move.fromCol);
-          const to = getBoardXY(move.toRow, move.toCol);
-          animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
-          setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
-          const boardBefore = this._cloneBoard(this.board);
-          const { board: nb, captured } = this._makeMove(this.board, move);
-          this.board = nb;
-          if (captured) this.capturedByBlack.push(captured);
-          this.moveHistory.push({ move, captured, boardBefore });
-          this.lastMove = move;
-          this.currentTurn = RED;
-          this.aiThinking = false;
-          updateMoveLog(notation);
-          this._checkGameEnd(BLACK);
-          this.render();
-          updateUI();
-        } else {
-          this.aiThinking = false;
-          const allMoves = this._allLegalMoves(this.board, BLACK);
-          if (allMoves.length === 0) {
-            this.gameOver = true;
-            this.gameResult = this._isInCheck(this.board, BLACK) ? '红方获胜！将死！' : '红方获胜！困毙黑方';
-          }
-          updateUI();
+    setTimeout(() => {
+      if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+      const move = this._getAIMove();
+      if (move) {
+        const piece = this.board[move.fromRow][move.fromCol];
+        const notation = this._getMoveNotation(move, this.board);
+        const from = getBoardXY(move.fromRow, move.fromCol);
+        const to = getBoardXY(move.toRow, move.toCol);
+        animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
+        setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
+        const boardBefore = this._cloneBoard(this.board);
+        const { board: nb, captured } = this._makeMove(this.board, move);
+        this.board = nb;
+        if (captured) this.capturedByBlack.push(captured);
+        this.moveHistory.push({ move, captured, boardBefore });
+        this.lastMove = move;
+        this.currentTurn = RED;
+        this.aiThinking = false;
+        updateMoveLog(notation);
+        this._checkGameEnd(BLACK);
+        this.render();
+        updateUI();
+      } else {
+        this.aiThinking = false;
+        const allMoves = this._allLegalMoves(this.board, BLACK);
+        if (allMoves.length === 0) {
+          this.gameOver = true;
+          this.gameResult = this._isInCheck(this.board, BLACK) ? '红方获胜！将死！' : '红方获胜！困毙黑方';
         }
-      }, 250 + Math.random() * 150);
-    };
-
-    if (aiMode === 'deepseek') {
-      (async () => {
-        const aiMove = await callDeepSeekAPI('chinese-chess', this.board);
-        if (this.gameOver || !aiMove) { this.aiThinking = false; updateUI(); return; }
-        const legalMoves = this._allLegalMoves(this.board, BLACK);
-        const matched = legalMoves.find(m =>
-          m.fromRow === aiMove.from[0] && m.fromCol === aiMove.from[1] &&
-          m.toRow === aiMove.to[0] && m.toCol === aiMove.to[1]
-        );
-        if (matched) {
-          const piece = this.board[matched.fromRow][matched.fromCol];
-          const notation = this._getMoveNotation(matched, this.board);
-          const from = getBoardXY(matched.fromRow, matched.fromCol);
-          const to = getBoardXY(matched.toRow, matched.toCol);
-          animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
-          setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
-          const boardBefore = this._cloneBoard(this.board);
-          const { board: nb, captured } = this._makeMove(this.board, matched);
-          this.board = nb;
-          if (captured) this.capturedByBlack.push(captured);
-          this.moveHistory.push({ move: matched, captured, boardBefore });
-          this.lastMove = matched;
-          this.currentTurn = RED;
-          this.aiThinking = false;
-          updateMoveLog(notation + ' (AI)');
-          this._checkGameEnd(BLACK);
-          this.render();
-          updateUI();
-        } else {
-          console.warn('[DeepSeek] Invalid move, falling back to local AI');
-          doLocalAI();
-        }
-      })();
-    } else {
-      doLocalAI();
-    }
+        updateUI();
+      }
+    }, 250 + Math.random() * 150);
+  }
   }
 
   _checkGameEnd(justMoved) {
@@ -1328,6 +1257,7 @@ class ChineseChessGame {
         <button class="diff-btn" data-diff="0">😊 简单</button>
         <button class="diff-btn active" data-diff="1">🤔 中等</button>
         <button class="diff-btn" data-diff="2">🔥 困难</button>
+        <button class="diff-btn" data-diff="3">💀 大师</button>
       </div></div>`;
   }
 
@@ -1380,7 +1310,7 @@ class GomokuGame {
     this.moveHistory = [];
     this.gameOver = false;
     this.gameResult = '';
-    this.difficulty = 1;
+    this.difficulty = 2;
     this.aiThinking = false;
     this.lastMove = null;
     this.winningCells = [];
@@ -1485,20 +1415,78 @@ class GomokuGame {
     }
   }
 
-  // AI: score-based greedy search
-  _getAIMove() {
-    const player = 3 - this.humanColor; // AI is white
-    let bestScore = -Infinity, bestR = -1, bestC = -1;
+  // ═══════════════════════════════════════════════════════
+  //  GOMOKU AI ENGINE - Professional Strength
+  // ═══════════════════════════════════════════════════════
 
-    // Evaluate candidate positions (near existing stones)
+  _countLine(r, c, dr, dc, player, board) {
+    let count = 0;
+    let i = 1;
+    while (true) {
+      const nr = r + dr * i, nc = c + dc * i;
+      if (nr < 0 || nr >= GK_SIZE || nc < 0 || nc >= GK_SIZE || board[nr][nc] !== player) break;
+      count++; i++;
+    }
+    return count;
+  }
+
+  _getLineInfo(r, c, dr, dc, player, board) {
+    const fwd = this._countLine(r, c, dr, dc, player, board);
+    const bwd = this._countLine(r, c, -dr, -dc, player, board);
+    const total = fwd + bwd + 1;
+    const fEnd = { r: r + dr * (fwd + 1), c: c + dc * (fwd + 1) };
+    const bEnd = { r: r - dr * (bwd + 1), c: c - dc * (bwd + 1) };
+    const fOpen = (fEnd.r >= 0 && fEnd.r < GK_SIZE && fEnd.c >= 0 && fEnd.c < GK_SIZE && board[fEnd.r][fEnd.c] === 0);
+    const bOpen = (bEnd.r >= 0 && bEnd.r < GK_SIZE && bEnd.c >= 0 && bEnd.c < GK_SIZE && board[bEnd.r][bEnd.c] === 0);
+    const openEnds = (fOpen ? 1 : 0) + (bOpen ? 1 : 0);
+    return { total, openEnds };
+  }
+
+  _evaluatePosition(r, c, player, board) {
+    const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+    let score = 0;
+    for (const [dr, dc] of dirs) {
+      const info = this._getLineInfo(r, c, dr, dc, player, board);
+      const { total, openEnds } = info;
+      if (total >= 5) score += 10000000;
+      else if (total === 4) {
+        if (openEnds === 2) score += 500000;
+        else if (openEnds === 1) score += 50000;
+      } else if (total === 3) {
+        if (openEnds === 2) score += 50000;
+        else if (openEnds === 1) score += 5000;
+      } else if (total === 2) {
+        if (openEnds === 2) score += 5000;
+        else if (openEnds === 1) score += 500;
+      } else if (total === 1) {
+        if (openEnds === 2) score += 100;
+        else if (openEnds === 1) score += 10;
+      }
+    }
+    return score;
+  }
+
+  _evaluateBoard(board, aiPlayer) {
+    const humanPlayer = 3 - aiPlayer;
+    let aiScore = 0, humanScore = 0;
+    for (let r = 0; r < GK_SIZE; r++) {
+      for (let c = 0; c < GK_SIZE; c++) {
+        if (board[r][c] === aiPlayer) aiScore += this._evaluatePosition(r, c, aiPlayer, board);
+        else if (board[r][c] === humanPlayer) humanScore += this._evaluatePosition(r, c, humanPlayer, board);
+      }
+    }
+    return aiScore - humanScore * 1.1;
+  }
+
+  _getCandidates(board) {
     const candidates = new Set();
     for (let r = 0; r < GK_SIZE; r++) {
       for (let c = 0; c < GK_SIZE; c++) {
-        if (this.board[r][c] !== 0) {
+        if (board[r][c] !== 0) {
           for (let dr = -2; dr <= 2; dr++) {
             for (let dc = -2; dc <= 2; dc++) {
               const nr = r + dr, nc = c + dc;
-              if (nr >= 0 && nr < GK_SIZE && nc >= 0 && nc < GK_SIZE && this.board[nr][nc] === 0) {
+              if (nr >= 0 && nr < GK_SIZE && nc >= 0 && nc < GK_SIZE && board[nr][nc] === 0) {
                 candidates.add(nr * GK_SIZE + nc);
               }
             }
@@ -1506,85 +1494,168 @@ class GomokuGame {
         }
       }
     }
-
-    if (candidates.size === 0) {
-      // First move: play center
-      return { row: 7, col: 7 };
-    }
-
+    if (candidates.size === 0) return [{ row: 7, col: 7 }];
+    const result = [];
     for (const key of candidates) {
-      const r = Math.floor(key / GK_SIZE), c = key % GK_SIZE;
-      // Evaluate from both perspectives
-      const score = this._evalPosition(r, c, player) + this._evalPosition(r, c, this.humanColor) * 0.9;
-      if (score > bestScore || (score === bestScore && Math.random() > 0.5)) {
-        bestScore = score; bestR = r; bestC = c;
+      result.push({ row: Math.floor(key / GK_SIZE), col: key % GK_SIZE });
+    }
+    return result;
+  }
+
+  _minimax(board, depth, alpha, beta, isMax, aiPlayer) {
+    if (depth === 0) return this._evaluateBoard(board, aiPlayer);
+
+    const humanPlayer = 3 - aiPlayer;
+    const curPlayer = isMax ? aiPlayer : humanPlayer;
+
+    const candidates = this._getCandidates(board);
+    if (candidates.length === 0) return 0;
+
+    const scored = candidates.map(m => {
+      board[m.row][m.col] = curPlayer;
+      const s = this._evaluatePosition(m.row, m.col, curPlayer, board);
+      board[m.row][m.col] = 0;
+      return { ...m, score: s };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    const topMoves = scored.slice(0, depth >= 2 ? 12 : 8);
+
+    if (isMax) {
+      let best = -Infinity;
+      for (const m of topMoves) {
+        board[m.row][m.col] = aiPlayer;
+        const val = this._minimax(board, depth - 1, alpha, beta, false, aiPlayer);
+        board[m.row][m.col] = 0;
+        best = Math.max(best, val);
+        alpha = Math.max(alpha, best);
+        if (beta <= alpha) break;
+      }
+      return best;
+    } else {
+      let best = Infinity;
+      for (const m of topMoves) {
+        board[m.row][m.col] = humanPlayer;
+        const val = this._minimax(board, depth - 1, alpha, beta, true, aiPlayer);
+        board[m.row][m.col] = 0;
+        best = Math.min(best, val);
+        beta = Math.min(beta, best);
+        if (beta <= alpha) break;
+      }
+      return best;
+    }
+  }
+
+  _getAIMove() {
+    const aiPlayer = 3 - this.humanColor;
+    const humanPlayer = this.humanColor;
+    const board = this.board;
+
+    const candidates = this._getCandidates(board);
+    if (candidates.length === 0) return { row: 7, col: 7 };
+
+    // 1. Check immediate win
+    for (const m of candidates) {
+      board[m.row][m.col] = aiPlayer;
+      const info = this._getLineInfo(m.row, m.col, 1, 0, aiPlayer, board)
+        .total >= 5 ? { total: 5 } :
+        this._getLineInfo(m.row, m.col, 0, 1, aiPlayer, board).total >= 5 ? { total: 5 } :
+        this._getLineInfo(m.row, m.col, 1, 1, aiPlayer, board).total >= 5 ? { total: 5 } :
+        this._getLineInfo(m.row, m.col, 1, -1, aiPlayer, board);
+      board[m.row][m.col] = 0;
+      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+      for (const [dr, dc] of dirs) {
+        if (this._getLineInfo(m.row, m.col, dr, dc, aiPlayer, board).total >= 5) return m;
       }
     }
 
-    return { row: bestR, col: bestC };
-  }
-
-  _evalPosition(r, c, player) {
-    const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-    let totalScore = 0;
-    for (const [dr, dc] of dirs) {
-      let count = 1, open = 0;
-      // Forward
-      let i = 1;
-      while (r + dr * i >= 0 && r + dr * i < GK_SIZE && c + dc * i >= 0 && c + dc * i < GK_SIZE && this.board[r + dr * i][c + dc * i] === player) { count++; i++; }
-      if (r + dr * i >= 0 && r + dr * i < GK_SIZE && c + dc * i >= 0 && c + dc * i < GK_SIZE && this.board[r + dr * i][c + dc * i] === 0) open++;
-      // Backward
-      i = 1;
-      while (r - dr * i >= 0 && r - dr * i < GK_SIZE && c - dc * i >= 0 && c - dc * i < GK_SIZE && this.board[r - dr * i][c - dc * i] === player) { count++; i++; }
-      if (r - dr * i >= 0 && r - dr * i < GK_SIZE && c - dc * i >= 0 && c - dc * i < GK_SIZE && this.board[r - dr * i][c - dc * i] === 0) open++;
-      // Score: favor longer sequences and more open ends
-      if (count >= 5) totalScore += 1000000;
-      else if (count === 4) totalScore += open >= 1 ? 10000 * (open + 1) : 2000;
-      else if (count === 3) totalScore += open >= 1 ? 500 * (open + 1) : 100;
-      else if (count === 2) totalScore += open >= 1 ? 50 * open : 10;
-      else totalScore += 1;
+    // 2. Block opponent win
+    for (const m of candidates) {
+      board[m.row][m.col] = humanPlayer;
+      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+      for (const [dr, dc] of dirs) {
+        if (this._getLineInfo(m.row, m.col, dr, dc, humanPlayer, board).total >= 5) {
+          board[m.row][m.col] = 0;
+          return m;
+        }
+      }
+      board[m.row][m.col] = 0;
     }
-    return totalScore;
+
+    // Difficulty-based search
+    if (this.difficulty === 0) {
+      // Easy: random with slight preference
+      let best = candidates[0], bestS = -Infinity;
+      for (const m of candidates) {
+        board[m.row][m.col] = aiPlayer;
+        const s = this._evaluatePosition(m.row, m.col, aiPlayer, board) * 0.8 +
+                  this._evaluatePosition(m.row, m.col, humanPlayer, board) * 0.2;
+        board[m.row][m.col] = 0;
+        if (s > bestS || (s === bestS && Math.random() > 0.5)) { bestS = s; best = m; }
+      }
+      return best;
+    }
+
+    if (this.difficulty === 1) {
+      // Medium: 1-ply search
+      let best = candidates[0], bestS = -Infinity;
+      for (const m of candidates) {
+        board[m.row][m.col] = aiPlayer;
+        const s = this._evaluateBoard(board, aiPlayer);
+        board[m.row][m.col] = 0;
+        if (s > bestS || (s === bestS && Math.random() > 0.5)) { bestS = s; best = m; }
+      }
+      return best;
+    }
+
+    if (this.difficulty === 2) {
+      // Hard: 2-ply minimax
+      let best = candidates[0], bestS = -Infinity;
+      for (const m of candidates) {
+        board[m.row][m.col] = aiPlayer;
+        const s = this._minimax(board, 1, -Infinity, Infinity, false, aiPlayer);
+        board[m.row][m.col] = 0;
+        if (s > bestS || (s === bestS && Math.random() > 0.5)) { bestS = s; best = m; }
+      }
+      return best;
+    }
+
+    // Expert (difficulty 3): 3-ply with deeper candidate filtering
+    {
+      const scored = candidates.map(m => {
+        board[m.row][m.col] = aiPlayer;
+        const s = this._evaluateBoard(board, aiPlayer);
+        board[m.row][m.col] = 0;
+        return { ...m, score: s };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      const topMoves = scored.slice(0, 10);
+
+      let best = topMoves[0], bestS = -Infinity;
+      for (const m of topMoves) {
+        board[m.row][m.col] = aiPlayer;
+        const s = this._minimax(board, 2, -Infinity, Infinity, false, aiPlayer);
+        board[m.row][m.col] = 0;
+        if (s > bestS) { bestS = s; best = m; }
+      }
+      return best;
+    }
   }
 
   _scheduleAI() {
     this.aiThinking = true;
     updateUI();
 
-    const doLocalAI = () => {
-      setTimeout(() => {
-        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-        const move = this._getAIMove();
-        if (move.row >= 0) {
-          this._placeStone(move.row, move.col, 3 - this.humanColor);
-          this.currentPlayer = this.humanColor;
-        }
-        this.aiThinking = false;
-        updateUI();
-        this.render();
-      }, 150 + Math.random() * 150);
-    };
-
-    if (aiMode === 'deepseek') {
-      (async () => {
-        const aiMove = await callDeepSeekAPI('gomoku', this.board);
-        if (this.gameOver || !aiMove || aiMove.pass) {
-          this.aiThinking = false; updateUI(); return;
-        }
-        if (aiMove.row >= 0 && aiMove.row < GK_SIZE && aiMove.col >= 0 && aiMove.col < GK_SIZE && this.board[aiMove.row][aiMove.col] === 0) {
-          this._placeStone(aiMove.row, aiMove.col, 3 - this.humanColor);
-          this.currentPlayer = this.humanColor;
-          this.aiThinking = false;
-          updateUI();
-          this.render();
-        } else {
-          console.warn('[DeepSeek] Invalid move, falling back to local AI');
-          doLocalAI();
-        }
-      })();
-    } else {
-      doLocalAI();
-    }
+    setTimeout(() => {
+      if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+      const move = this._getAIMove();
+      if (move.row >= 0) {
+        this._placeStone(move.row, move.col, 3 - this.humanColor);
+        this.currentPlayer = this.humanColor;
+      }
+      this.aiThinking = false;
+      updateUI();
+      this.render();
+    }, 150 + Math.random() * 150);
   }
 
   newGame() {
@@ -1694,8 +1765,9 @@ class GomokuGame {
     return `<div><div class="section-title">难度 · Difficulty</div>
       <div class="diff-group" id="gkDiffGroup">
         <button class="diff-btn" data-diff="0">😊 简单</button>
-        <button class="diff-btn active" data-diff="1">🤔 中等</button>
-        <button class="diff-btn" data-diff="2">🔥 困难</button>
+        <button class="diff-btn" data-diff="1">🤔 中等</button>
+        <button class="diff-btn active" data-diff="2">🔥 困难</button>
+        <button class="diff-btn" data-diff="3">💀 大师</button>
       </div></div>`;
   }
 
@@ -1961,11 +2033,23 @@ class ChessGame {
       }
       return bm;
     }
-    let bm=all[0],bs=-Infinity;
-    for(const m of this._orderMoves(this.board,[...all])){
+    if(this.difficulty===2){
+      let bm=all[0],bs=-Infinity;
+      for(const m of this._orderMoves(this.board,[...all])){
+        const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
+        if(m.enPassant)s[m.fromRow][m.toCol]=null;
+        const sc=this._minimax(s,2,-Infinity,Infinity,false,this.castlingRights,this.enPassantTarget);
+        if(sc>bs){bs=sc;bm=m;}
+      }
+      return bm;
+    }
+    // Expert: depth 3 with pruning
+    const ord=this._orderMoves(this.board,[...all]).slice(0,15);
+    let bm=ord[0],bs=-Infinity;
+    for(const m of ord){
       const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
       if(m.enPassant)s[m.fromRow][m.toCol]=null;
-      const sc=this._minimax(s,2,-Infinity,Infinity,false,this.castlingRights,this.enPassantTarget);
+      const sc=this._minimax(s,3,-Infinity,Infinity,false,this.castlingRights,this.enPassantTarget);
       if(sc>bs){bs=sc;bm=m;}
     }
     return bm;
@@ -2142,98 +2226,57 @@ class ChessGame {
     this.aiThinking = true;
     updateUI();
 
-    const doLocalAI = () => {
-      setTimeout(() => {
-        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-        const move = this._getAIMove();
-        if (move) {
-          const piece = this.board[move.fromRow][move.fromCol];
-          const notation = this._notation(move, this.board);
-          const from = getBoardXY(move.fromRow, move.fromCol);
-          const to = getBoardXY(move.toRow, move.toCol);
-          animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
-          setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
-          const boardBefore = this._cloneBoard(this.board);
-          const oldEnPassant = this.enPassantTarget;
-          this.enPassantTarget = null;
-          if (piece.type === IC_PAWN && Math.abs(move.toRow - move.fromRow) === 2) {
-            this.enPassantTarget = { row: (move.fromRow + move.toRow) / 2, col: move.fromCol };
-          }
-          let captured = this.board[move.toRow][move.toCol];
-          const nb = this._cloneBoard(this.board);
-          if (move.enPassant) {
-            captured = nb[move.fromRow][move.toCol];
-            nb[move.fromRow][move.toCol] = null;
-          }
-          nb[move.toRow][move.toCol] = nb[move.fromRow][move.fromCol];
-          nb[move.fromRow][move.fromCol] = null;
-          const promoRow = piece.side === IC_BLACK ? 7 : 0;
-          if (piece.type === IC_PAWN && move.toRow === promoRow) {
-            nb[move.toRow][move.toCol].type = IC_QUEEN;
-          }
-          this.board = nb;
-          if (captured) this.capturedByBlack.push(captured);
-          this.moveHistory.push({ move, captured, boardBefore, oldEnPassant });
-          this.lastMove = move;
-          this.currentTurn = IC_WHITE;
-          this.aiThinking = false;
-          updateMoveLog(notation);
-          this._checkGameEnd(IC_BLACK);
-          this.render();
-          updateUI();
-        } else {
-          this.aiThinking = false;
-          const allMoves = this._allLegalMoves(this.board, IC_BLACK, this.castlingRights, this.enPassantTarget);
-          if (allMoves.length === 0) {
-            this.gameOver = true;
-            this.gameResult = this._isInCheck(this.board, IC_BLACK) ? '白方获胜！将杀！' : '平局！逼和';
-          } else {
-            this._doAIMoveDirect(allMoves[Math.floor(Math.random() * allMoves.length)]);
-          }
-          updateUI();
+    setTimeout(() => {
+      if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+      const move = this._getAIMove();
+      if (move) {
+        const piece = this.board[move.fromRow][move.fromCol];
+        const notation = this._notation(move, this.board);
+        const from = getBoardXY(move.fromRow, move.fromCol);
+        const to = getBoardXY(move.toRow, move.toCol);
+        animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
+        setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
+        const boardBefore = this._cloneBoard(this.board);
+        const oldEnPassant = this.enPassantTarget;
+        this.enPassantTarget = null;
+        if (piece.type === IC_PAWN && Math.abs(move.toRow - move.fromRow) === 2) {
+          this.enPassantTarget = { row: (move.fromRow + move.toRow) / 2, col: move.fromCol };
         }
-      }, 250 + Math.random() * 150);
-    };
-
-    if (aiMode === 'deepseek') {
-      (async () => {
-        const aiMove = await callDeepSeekAPI('chess', this.board, {
-          currentTurn: this.currentTurn,
-          castlingRights: this.castlingRights,
-          enPassant: this.enPassantTarget,
-        });
-        if (this.gameOver || !aiMove) { this.aiThinking = false; updateUI(); return; }
-        const colMap = {a:0,b:1,c:2,d:3,e:4,f:5,g:6,h:7};
-        const fromCol = colMap[aiMove.from[0]], fromRow = 8 - parseInt(aiMove.from[1]);
-        const toCol = colMap[aiMove.to[0]], toRow = 8 - parseInt(aiMove.to[1]);
-        const legalMoves = this._allLegalMoves(this.board, IC_BLACK, this.castlingRights, this.enPassantTarget);
-        const matched = legalMoves.find(m =>
-          m.fromRow === fromRow && m.fromCol === fromCol && m.toRow === toRow && m.toCol === toCol
-        );
-        if (matched) {
-          const piece = this.board[matched.fromRow][matched.fromCol];
-          const notation = this._notation(matched, this.board);
-          const from = getBoardXY(matched.fromRow, matched.fromCol);
-          const to = getBoardXY(matched.toRow, matched.toCol);
-          animatePulse(from.x, from.y, 'rgba(120,200,255,0.8)', this.pieceR, 400);
-          setTimeout(() => animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500), 400);
-          const boardBefore = this._cloneBoard(this.board);
-          const oldEnPassant = this.enPassantTarget;
-          this.enPassantTarget = null;
-          if (piece.type === IC_PAWN && Math.abs(matched.toRow - matched.fromRow) === 2) {
-            this.enPassantTarget = { row: (matched.fromRow + matched.toRow) / 2, col: matched.fromCol };
-          }
-          let captured = this.board[matched.toRow][matched.toCol];
-          const nb = this._cloneBoard(this.board);
-          if (matched.enPassant) {
-            captured = nb[matched.fromRow][matched.toCol];
-            nb[matched.fromRow][matched.toCol] = null;
-          }
-          nb[matched.toRow][matched.toCol] = nb[matched.fromRow][matched.fromCol];
-          nb[matched.fromRow][matched.fromCol] = null;
-          const promoRow = piece.side === IC_BLACK ? 7 : 0;
-          if (piece.type === IC_PAWN && matched.toRow === promoRow) {
-            nb[matched.toRow][matched.toCol].type = IC_QUEEN;
+        let captured = this.board[move.toRow][move.toCol];
+        const nb = this._cloneBoard(this.board);
+        if (move.enPassant) {
+          captured = nb[move.fromRow][move.toCol];
+          nb[move.fromRow][move.toCol] = null;
+        }
+        nb[move.toRow][move.toCol] = nb[move.fromRow][move.fromCol];
+        nb[move.fromRow][move.fromCol] = null;
+        const promoRow = piece.side === IC_BLACK ? 7 : 0;
+        if (piece.type === IC_PAWN && move.toRow === promoRow) {
+          nb[move.toRow][move.toCol].type = IC_QUEEN;
+        }
+        this.board = nb;
+        if (captured) this.capturedByBlack.push(captured);
+        this.moveHistory.push({ move, captured, boardBefore, oldEnPassant });
+        this.lastMove = move;
+        this.currentTurn = IC_WHITE;
+        this.aiThinking = false;
+        updateMoveLog(notation);
+        this._checkGameEnd(IC_BLACK);
+        this.render();
+        updateUI();
+      } else {
+        this.aiThinking = false;
+        const allMoves = this._allLegalMoves(this.board, IC_BLACK, this.castlingRights, this.enPassantTarget);
+        if (allMoves.length === 0) {
+          this.gameOver = true;
+          this.gameResult = this._isInCheck(this.board, IC_BLACK) ? '白方获胜！将杀！' : '平局！逼和';
+        } else {
+          this._doAIMoveDirect(allMoves[Math.floor(Math.random() * allMoves.length)]);
+        }
+        updateUI();
+      }
+    }, 250 + Math.random() * 150);
+  }
           }
           this.board = nb;
           if (captured) this.capturedByBlack.push(captured);
@@ -2412,6 +2455,7 @@ class ChessGame {
         <button class="diff-btn" data-diff="0">😊 简单</button>
         <button class="diff-btn active" data-diff="1">🤔 中等</button>
         <button class="diff-btn" data-diff="2">🔥 困难</button>
+        <button class="diff-btn" data-diff="3">💀 大师</button>
       </div></div>`;
   }
 
@@ -2742,8 +2786,9 @@ class GoGame {
     for (let r = 0; r < bs; r++) {
       for (let c = 0; c < bs; c++) {
         if (this.board[r][c] !== 0) {
-          for (let dr = -1; dr <= 1; dr++) {
-            for (let dc = -1; dc <= 1; dc++) {
+          const range = this.difficulty >= 2 ? 2 : 1;
+          for (let dr = -range; dr <= range; dr++) {
+            for (let dc = -range; dc <= range; dc++) {
               const nr = r + dr, nc = c + dc;
               if (nr >= 0 && nr < bs && nc >= 0 && nc < bs && this.board[nr][nc] === 0) {
                 const key = nr * bs + nc;
@@ -2772,7 +2817,8 @@ class GoGame {
       if (this._isSuicide(r, c, player)) continue;
 
       let score = 0;
-      // Evaluate territory influence
+
+      // Basic territory influence
       for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
         const nr = r + dr, nc = c + dc;
         if (nr >= 0 && nr < bs && nc >= 0 && nc < bs) {
@@ -2800,6 +2846,37 @@ class GoGame {
       }
       score += captures * 20;
 
+      // Higher difficulty: look at diagonal influence and connections
+      if (this.difficulty >= 2) {
+        for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < bs && nc >= 0 && nc < bs) {
+            if (this.board[nr][nc] === player) score += 5;
+            else if (this.board[nr][nc] === this.humanColor) score -= 3;
+          }
+        }
+        // Liberty count for the group if we place here
+        const libCount = this._countLiberties(sim, r, c, player);
+        score += libCount * 3;
+      }
+
+      // Expert: evaluate connections and shape
+      if (this.difficulty >= 3) {
+        let connections = 0;
+        for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]]) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < bs && nc >= 0 && nc < bs && this.board[nr][nc] === player) {
+            connections++;
+          }
+        }
+        score += connections * 4;
+        // Penalize isolated stones early
+        if (this.moveHistory.length < 10 && connections === 0) score -= 15;
+      }
+
+      // Add slight randomness for variety
+      score += Math.random() * 0.5;
+
       if (score > bestScore) {
         bestScore = score;
         bestMove = {r, c};
@@ -2807,6 +2884,27 @@ class GoGame {
     }
 
     return { row: bestMove.r, col: bestMove.c };
+  }
+
+  _countLiberties(b, r, c, player) {
+    const visited = new Set();
+    const stack = [{r, c}];
+    let liberties = 0;
+    while (stack.length > 0) {
+      const {r: cr, c: cc} = stack.pop();
+      const key = cr * this.boardSize + cc;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        const nr = cr + dr, nc = cc + dc;
+        if (nr < 0 || nr >= this.boardSize || nc < 0 || nc >= this.boardSize) continue;
+        if (b[nr][nc] === 0) liberties++;
+        else if (b[nr][nc] === player && !visited.has(nr * this.boardSize + nc)) {
+          stack.push({r: nr, c: nc});
+        }
+      }
+    }
+    return liberties;
   }
 
   _countGroup(b, r, c, player) {
@@ -2833,58 +2931,24 @@ class GoGame {
     this.aiThinking = true;
     updateUI();
 
-    const doLocalAI = () => {
-      setTimeout(() => {
-        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-        const move = this._getAIMove();
-        if (move.row >= 0 && !this._isSuicide(move.row, move.col, 3 - this.humanColor)) {
-          this._placeStone(move.row, move.col);
-        } else {
-          this.passCount++;
-          updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
-          if (this.passCount >= 2) {
-            this._endGame();
-            updateUI();
-          }
-        }
-        this.currentPlayer = this.humanColor;
-        this.aiThinking = false;
-        updateUI();
-        this.render();
-      }, 200 + Math.random() * 200);
-    };
-
-    if (aiMode === 'deepseek') {
-      (async () => {
-        const aiMove = await callDeepSeekAPI('go', this.board, { boardSize: this.boardSize });
-        if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
-        if (aiMove && aiMove.pass) {
-          this.passCount++;
-          updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
-          if (this.passCount >= 2) {
-            this._endGame();
-          }
-          this.currentPlayer = this.humanColor;
-          this.aiThinking = false;
+    setTimeout(() => {
+      if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
+      const move = this._getAIMove();
+      if (move.row >= 0 && !this._isSuicide(move.row, move.col, 3 - this.humanColor)) {
+        this._placeStone(move.row, move.col);
+      } else {
+        this.passCount++;
+        updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
+        if (this.passCount >= 2) {
+          this._endGame();
           updateUI();
-          this.render();
-          return;
         }
-        if (aiMove && aiMove.row >= 0 && aiMove.row < this.boardSize && aiMove.col >= 0 && aiMove.col < this.boardSize &&
-            this.board[aiMove.row][aiMove.col] === 0 && !this._isSuicide(aiMove.row, aiMove.col, 3 - this.humanColor)) {
-          this._placeStone(aiMove.row, aiMove.col);
-          this.currentPlayer = this.humanColor;
-          this.aiThinking = false;
-          updateUI();
-          this.render();
-        } else {
-          console.warn('[DeepSeek] Invalid move, falling back to local AI');
-          doLocalAI();
-        }
-      })();
-    } else {
-      doLocalAI();
-    }
+      }
+      this.currentPlayer = this.humanColor;
+      this.aiThinking = false;
+      updateUI();
+      this.render();
+    }, 200 + Math.random() * 200);
   }
 
   newGame() {
@@ -3002,6 +3066,13 @@ class GoGame {
         <button class="size-btn active" data-size="9">9×9</button>
         <button class="size-btn" data-size="13">13×13</button>
         <button class="size-btn" data-size="19">19×19</button>
+      </div>
+      <div class="section-title" style="margin-top:12px;">难度 · Difficulty</div>
+      <div class="diff-group" id="goDiffGroup">
+        <button class="diff-btn" data-diff="0">😊 简单</button>
+        <button class="diff-btn active" data-diff="1">🤔 中等</button>
+        <button class="diff-btn" data-diff="2">🔥 困难</button>
+        <button class="diff-btn" data-diff="3">💀 大师</button>
       </div></div>`;
   }
 
@@ -3013,6 +3084,14 @@ class GoGame {
       this.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       self.setBoardSize(parseInt(btn.dataset.size));
+    });
+    document.getElementById('goDiffGroup').addEventListener('click', function(e) {
+      const btn = e.target.closest('.diff-btn');
+      if (!btn) return;
+      this.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      self.difficulty = parseInt(btn.dataset.diff);
+      if (self.moveHistory.length > 0) self.newGame();
     });
   }
 
