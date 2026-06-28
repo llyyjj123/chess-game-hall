@@ -1598,6 +1598,7 @@ class GomokuGame {
 
     this._placeStone(br, bc, this.currentPlayer);
     if (this.multiplayer) {
+      this.currentPlayer = 3 - this.currentPlayer;
       mp.sendMove({ row: br, col: bc });
     } else if (!this.gameOver && this.currentPlayer === this.humanColor) {
       this.currentPlayer = 3 - this.currentPlayer;
