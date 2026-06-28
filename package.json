@@ -17,7 +17,7 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^4.18.0",
-    "openai": "^4.0.0"
+    "socket.io": "^4.8.3"
   },
   "bugs": {
     "url": "https://github.com/llyyjj123/chess-game-hall/issues"

@@ -309,7 +309,30 @@ canvas { display: block; cursor: pointer; }
   font-weight: 700;
   transition: all 0.25s;
 }
-.small-btn:hover { background: rgba(0,180,216,0.2); }
+  .small-btn:hover { background: rgba(0,180,216,0.2); }
+
+  /* ── Multiplayer ── */
+  .mp-toggle { display: flex; gap: 4px; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 4px; }
+  .mp-btn {
+    flex: 1; padding: 8px 6px; border: none; background: transparent;
+    color: var(--text-light); border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-size: 0.82em; transition: all 0.25s; white-space: nowrap;
+  }
+  .mp-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .mp-btn.active { background: rgba(0,180,216,0.2); color: var(--cyan); font-weight: 700; }
+  .mp-room-panel { background: rgba(0,0,0,0.25); border-radius: 10px; border: 1px solid rgba(0,180,216,0.15); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .mp-input {
+    width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(0,180,216,0.3);
+    border-radius: 8px; color: var(--text); font-family: inherit; font-size: 0.85em; text-align: center;
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .mp-input::placeholder { color: var(--text-light); opacity: 0.5; letter-spacing: 1px; text-transform: none; }
+  .mp-room-code { font-size: 2em; font-weight: 900; color: var(--cyan); text-align: center; letter-spacing: 6px; padding: 8px 0; }
+  .mp-status { font-size: 0.8em; color: var(--text-light); text-align: center; }
+  .mp-status.waiting { color: #f0ad4e; }
+  .mp-status.connected { color: #5cb85c; }
+  .mp-divider { color: var(--text-light); font-size: 0.75em; text-align: center; opacity: 0.5; }
+
 
 /* ── Captured section for Intl Chess ── */
 .captured-intl {
@@ -360,6 +383,7 @@ canvas { display: block; cursor: pointer; }
 </style>
 </head>
 <body>
+<script src="/socket.io/socket.io.js"></script>
 
 <div class="app-header">
   <div class="app-title">棋类游戏大厅</div>
@@ -674,7 +698,19 @@ function switchGame(gameId) {
 function updateSidePanel() {
   if (!activeGame) return;
   const panelEl = document.getElementById('panelControls');
-  panelEl.innerHTML = activeGame.getPanelHTML ? activeGame.getPanelHTML() : '';
+  panelEl.innerHTML = getMPPanelHTML() + (activeGame.getPanelHTML ? activeGame.getPanelHTML() : '');
+
+  // Bind multiplayer toggle
+  document.getElementById('mpToggle').addEventListener('click', function(e) {
+    const btn = e.target.closest('.mp-btn');
+    if (!btn) return;
+    this.querySelectorAll('.mp-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    multiplayerMode = btn.dataset.mode === 'online';
+    if (mp.roomId) mp.leaveRoom();
+    if (activeGame) activeGame.newGame();
+    updateMPPanel();
+  });
 
   // Re-bind panel events
   if (activeGame.bindPanelEvents) activeGame.bindPanelEvents();
@@ -763,7 +799,7 @@ document.getElementById('btnNewGame').addEventListener('click', () => {
 });
 
 document.getElementById('btnUndo').addEventListener('click', () => {
-  if (!activeGame || hasActiveAnimations()) return;
+  if (!activeGame || hasActiveAnimations() || activeGame.multiplayer) return;
   if (activeGame.undo) activeGame.undo();
   // Remove last moves from log
   const log = document.getElementById('moveLog');
@@ -791,6 +827,161 @@ document.addEventListener('keydown', (e) => {
 console.log('🎮 棋类游戏大厅已就绪');
 console.log('   Games: 象棋 | 五子棋 | 国际象棋 | 围棋');
 console.log('   快捷键: N=新游戏 U=悔棋 Esc=取消');
+
+// ===================================================================
+//  MULTIPLAYER MANAGER
+// ===================================================================
+
+let multiplayerMode = false;
+
+class MultiplayerManager {
+  constructor() {
+    this.socket = null;
+    this.roomId = null;
+    this.mySide = null;
+    this.gameType = null;
+    this.connected = false;
+  }
+
+  connect() {
+    if (this.socket) return;
+    this.socket = io();
+    this.socket.on('connect', () => { this.connected = true; updateMPPanel(); });
+    this.socket.on('disconnect', () => { this.connected = false; updateMPPanel(); });
+    this.socket.on('game-start', ({ opponentSide }) => {
+      if (activeGame) {
+        activeGame.multiplayer = true;
+        activeGame.mySide = this.mySide;
+        activeGame.opponentSide = opponentSide;
+      }
+      updateMPPanel();
+      updateUI();
+    });
+    this.socket.on('opponent-move', ({ moveData }) => {
+      if (activeGame && activeGame.applyOpponentMove) {
+        activeGame.applyOpponentMove(moveData);
+      }
+    });
+    this.socket.on('opponent-pass', () => {
+      if (activeGame && activeGame.applyOpponentPass) {
+        activeGame.applyOpponentPass();
+      }
+    });
+    this.socket.on('opponent-left', () => {
+      this.roomId = null;
+      this.mySide = null;
+      if (activeGame) {
+        activeGame.multiplayer = false;
+        activeGame.mySide = null;
+        activeGame.opponentSide = null;
+      }
+      alert('对手已离开房间');
+      updateMPPanel();
+      updateUI();
+    });
+  }
+
+  createRoom(gameType) {
+    this.connect();
+    this.gameType = gameType;
+    this.socket.emit('create-room', { gameType }, (res) => {
+      if (res.error) { alert(res.error); return; }
+      this.roomId = res.roomId;
+      this.mySide = res.side;
+      updateMPPanel();
+    });
+  }
+
+  joinRoom(roomId, gameType) {
+    this.connect();
+    this.gameType = gameType;
+    this.socket.emit('join-room', { roomId: roomId.toUpperCase(), gameType }, (res) => {
+      if (res.error) { alert(res.error); return; }
+      this.roomId = res.roomId;
+      this.mySide = res.side;
+      if (activeGame) {
+        activeGame.multiplayer = true;
+        activeGame.mySide = this.mySide;
+      }
+      updateMPPanel();
+      updateUI();
+    });
+  }
+
+  sendMove(moveData) {
+    if (!this.roomId || !this.socket) return;
+    this.socket.emit('move', { roomId: this.roomId, moveData });
+  }
+
+  sendPass() {
+    if (!this.roomId || !this.socket) return;
+    this.socket.emit('pass', { roomId: this.roomId });
+  }
+
+  leaveRoom() {
+    if (!this.roomId) return;
+    this.socket.emit('leave-room', { roomId: this.roomId });
+    this.roomId = null;
+    this.mySide = null;
+    if (activeGame) {
+      activeGame.multiplayer = false;
+      activeGame.mySide = null;
+      activeGame.opponentSide = null;
+    }
+    updateMPPanel();
+    updateUI();
+  }
+}
+
+const mp = new MultiplayerManager();
+
+function getMPPanelHTML() {
+  return `<div class="section-title">联机模式</div>
+    <div class="mp-toggle" id="mpToggle">
+      <button class="mp-btn active" data-mode="local">🎮 本地</button>
+      <button class="mp-btn" data-mode="online">🌐 联机</button>
+    </div>
+    <div id="mpOnlinePanel" style="display:none;">
+      <div class="mp-room-panel" id="mpRoomPanel"></div>
+    </div>`;
+}
+
+function updateMPPanel() {
+  const panel = document.getElementById('mpOnlinePanel');
+  if (!panel) return;
+  if (!multiplayerMode) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+
+  const rp = document.getElementById('mpRoomPanel');
+  if (!mp.roomId) {
+    rp.innerHTML = `
+      <button class="btn primary" id="mpCreateBtn" style="width:100%">创建房间</button>
+      <div class="mp-divider">── 或 ──</div>
+      <input class="mp-input" id="mpJoinInput" placeholder="输入房间号" maxlength="6">
+      <button class="btn" id="mpJoinBtn" style="width:100%">加入房间</button>`;
+    document.getElementById('mpCreateBtn').onclick = () => mp.createRoom(activeGameId);
+    document.getElementById('mpJoinBtn').onclick = () => {
+      const val = document.getElementById('mpJoinInput').value.trim();
+      if (val) mp.joinRoom(val, activeGameId);
+    };
+  } else {
+    const isWaiting = mp.roomId && !activeGame?.multiplayer;
+    rp.innerHTML = `
+      <div class="mp-room-code">${mp.roomId}</div>
+      <div class="mp-status ${isWaiting ? 'waiting' : 'connected'}">${isWaiting ? '⏳ 等待对手加入...' : '✅ 已连接 · 你是' + (mp.mySide === 'red' || mp.mySide === 'black' && activeGameId !== 'chinese-chess' && activeGameId !== 'chess' ? '黑方' : mp.mySide === 'red' ? '红方' : mp.mySide === 'white' ? '白方' : mp.mySide)}</div>
+      <button class="btn" id="mpLeaveBtn" style="width:100%">离开房间</button>`;
+    document.getElementById('mpLeaveBtn').onclick = () => {
+      mp.leaveRoom();
+      if (activeGame) activeGame.newGame();
+    };
+  }
+}
+
+function getMPSideLabel(side, gameType) {
+  if (gameType === 'chinese-chess') return side === 'red' ? '红方' : '黑方';
+  if (gameType === 'chess') return side === 'white' ? '白方' : '黑方';
+  return side === 'black' ? '黑方' : '白方';
+}
 
 // ===================================================================
 // ═══════════════════════════════════════════════════════
@@ -836,6 +1027,9 @@ class ChineseChessGame {
     this.difficulty = 1;
     this.aiThinking = false;
     this.lastMove = null;
+    this.multiplayer = false;
+    this.mySide = null;
+    this.opponentSide = null;
     this._calcSizes();
     this.render();
     updateUI();
@@ -1042,6 +1236,10 @@ class ChineseChessGame {
 
   handleClick(mx, my) {
     if (this.gameOver || this.aiThinking) return;
+    if (this.multiplayer) {
+      const mySideNum = this.mySide === 'red' ? RED : BLACK;
+      if (this.currentTurn !== mySideNum) return;
+    }
     const cs = this.cellSize, px = this.padX, py = this.padY;
     let br = -1, bc = -1, bd = Infinity;
     for (let r = 0; r < 10; r++) {
@@ -1090,7 +1288,11 @@ class ChineseChessGame {
     this.render();
     updateUI();
 
-    if (!this.gameOver && this.currentTurn === BLACK) this._scheduleAI();
+    if (this.multiplayer) {
+      mp.sendMove({ fromRow: move.fromRow, fromCol: move.fromCol, toRow: move.toRow, toCol: move.toCol });
+    } else if (!this.gameOver && this.currentTurn === BLACK) {
+      this._scheduleAI();
+    }
   }
 
   _scheduleAI() {
@@ -1140,6 +1342,33 @@ class ChineseChessGame {
       this.gameResult = justMoved === RED ? '红方获胜！将死！' : '黑方获胜！将死！';
       if (!inCheck) this.gameResult = justMoved === RED ? '红方获胜！困毙黑方' : '黑方获胜！困毙红方';
     }
+  }
+
+  applyOpponentMove(data) {
+    if (this.gameOver) return;
+    const legalMoves = this._allLegalMoves(this.board, this.currentTurn);
+    const match = legalMoves.find(m =>
+      m.fromRow === data.fromRow && m.fromCol === data.fromCol &&
+      m.toRow === data.toRow && m.toCol === data.toCol
+    );
+    if (!match) { console.warn('[CC] Invalid opponent move', data); return; }
+    const notation = this._getMoveNotation(match, this.board);
+    const boardBefore = this._cloneBoard(this.board);
+    const { board: nb, captured } = this._makeMove(this.board, match);
+    this.board = nb;
+    if (captured) {
+      if (this.currentTurn === RED) this.capturedByRed.push(captured);
+      else this.capturedByBlack.push(captured);
+    }
+    this.moveHistory.push({ move: match, captured, boardBefore });
+    this.lastMove = match;
+    const to = getBoardXY(match.toRow, match.toCol);
+    animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500);
+    this.currentTurn = 1 - this.currentTurn;
+    this._checkGameEnd(1 - this.currentTurn);
+    updateMoveLog(notation);
+    this.render();
+    updateUI();
   }
 
   clearSelection() { this.selectedPiece = null; this.validMoves = []; this.render(); updateUI(); }
@@ -1313,6 +1542,9 @@ class GomokuGame {
     this.aiThinking = false;
     this.lastMove = null;
     this.winningCells = [];
+    this.multiplayer = false;
+    this.mySide = null;
+    this.opponentSide = null;
     this._calcSizes();
     this.render();
     updateUI();
@@ -1336,6 +1568,7 @@ class GomokuGame {
 
   handleClick(mx, my) {
     if (this.gameOver || this.aiThinking) return;
+    if (this.multiplayer && this.currentPlayer !== this.mySide) return;
     const cs = this.cellSize, px = this.padX, py = this.padY;
     // Find nearest grid point
     let br = -1, bc = -1, bd = Infinity;
@@ -1349,7 +1582,9 @@ class GomokuGame {
     if (br < 0 || this.board[br][bc] !== 0) return;
 
     this._placeStone(br, bc, this.currentPlayer);
-    if (!this.gameOver && this.currentPlayer === this.humanColor) {
+    if (this.multiplayer) {
+      mp.sendMove({ row: br, col: bc });
+    } else if (!this.gameOver && this.currentPlayer === this.humanColor) {
       this.currentPlayer = 3 - this.currentPlayer;
       this._scheduleAI();
     }
@@ -1657,6 +1892,17 @@ class GomokuGame {
     }, 150 + Math.random() * 150);
   }
 
+  applyOpponentMove(data) {
+    if (this.gameOver) return;
+    if (data.row < 0 || data.row >= GK_SIZE || data.col < 0 || data.col >= GK_SIZE) return;
+    if (this.board[data.row][data.col] !== 0) return;
+    const oppSide = this.mySide === 'black' ? 2 : 1;
+    this._placeStone(data.row, data.col, oppSide);
+    this.currentPlayer = this.mySide;
+    this.render();
+    updateUI();
+  }
+
   newGame() {
     this.board = Array.from({length: GK_SIZE}, () => Array(GK_SIZE).fill(0));
     this.currentPlayer = 1; this.moveHistory = []; this.gameOver = false; this.gameResult = '';
@@ -1824,6 +2070,9 @@ class ChessGame {
     this.castlingRights = { wK: true, wQ: true, bK: true, bQ: true };
     this.enPassantTarget = null;
     this.promotionPending = null;
+    this.multiplayer = false;
+    this.mySide = null;
+    this.opponentSide = null;
     this._calcSizes();
     this.render();
     updateUI();
@@ -2057,6 +2306,7 @@ class ChessGame {
   // ── GAME ACTIONS ──
   handleClick(mx, my) {
     if (this.gameOver || this.aiThinking || this.promotionPending) return;
+    if (this.multiplayer && this.currentTurn !== (this.mySide === 'white' ? IC_WHITE : IC_BLACK)) return;
     const cs = this.cellSize, px = this.padX, py = this.padY;
     const col = Math.round((mx - px - cs/2) / cs);
     const row = Math.round((my - py - cs/2) / cs);
@@ -2169,7 +2419,11 @@ class ChessGame {
     this.render();
     updateUI();
 
-    if (!this.gameOver && this.currentTurn === IC_BLACK) this._scheduleAI();
+    if (this.multiplayer) {
+      mp.sendMove({ fromRow: move.fromRow, fromCol: move.fromCol, toRow: move.toRow, toCol: move.toCol, promotion: move.promotion || null });
+    } else if (!this.gameOver && this.currentTurn === IC_BLACK) {
+      this._scheduleAI();
+    }
   }
 
   _showPromotionDialog(side, callback) {
@@ -2292,6 +2546,72 @@ class ChessGame {
   }
 
   clearSelection() { this.selectedPiece = null; this.validMoves = []; this.render(); updateUI(); }
+
+  applyOpponentMove(data) {
+    if (this.gameOver) return;
+    const legalMoves = this._allLegalMoves(this.board, this.currentTurn, this.castlingRights, this.enPassantTarget);
+    const match = legalMoves.find(m =>
+      m.fromRow === data.fromRow && m.fromCol === data.fromCol &&
+      m.toRow === data.toRow && m.toCol === data.toCol
+    );
+    if (!match) { console.warn('[IC] Invalid opponent move', data); return; }
+    if (data.promotion) match.promotion = data.promotion;
+    const piece = this.board[match.fromRow][match.fromCol];
+    const notation = this._notation(match, this.board);
+    const boardBefore = this._cloneBoard(this.board);
+    const oldEnPassant = this.enPassantTarget;
+    this.enPassantTarget = null;
+    if (piece.type === IC_PAWN && Math.abs(match.toRow - match.fromRow) === 2) {
+      this.enPassantTarget = { row: (match.fromRow + match.toRow) / 2, col: match.fromCol };
+    }
+    if (piece.type === IC_KING) {
+      if (piece.side === IC_WHITE) { this.castlingRights.wK = false; this.castlingRights.wQ = false; }
+      else { this.castlingRights.bK = false; this.castlingRights.bQ = false; }
+    }
+    if (piece.type === IC_ROOK) {
+      if (piece.side === IC_WHITE && match.fromRow === 7) {
+        if (match.fromCol === 0) this.castlingRights.wQ = false;
+        if (match.fromCol === 7) this.castlingRights.wK = false;
+      }
+      if (piece.side === IC_BLACK && match.fromRow === 0) {
+        if (match.fromCol === 0) this.castlingRights.bQ = false;
+        if (match.fromCol === 7) this.castlingRights.bK = false;
+      }
+    }
+    let captured = this.board[match.toRow][match.toCol];
+    const nb = this._cloneBoard(this.board);
+    if (match.enPassant) {
+      captured = nb[match.fromRow][match.toCol];
+      nb[match.fromRow][match.toCol] = null;
+    }
+    nb[match.toRow][match.toCol] = nb[match.fromRow][match.fromCol];
+    nb[match.fromRow][match.fromCol] = null;
+    const promoRow = piece.side === IC_BLACK ? 7 : 0;
+    if (piece.type === IC_PAWN && match.toRow === promoRow) {
+      nb[match.toRow][match.toCol].type = match.promotion ? { Q: IC_QUEEN, R: IC_ROOK, B: IC_BISHOP, N: IC_KNIGHT }[match.promotion] : IC_QUEEN;
+    }
+    if (match.castle) {
+      const rkRow = match.toRow;
+      if (match.castle === 'K') { nb[rkRow][5] = nb[rkRow][7]; nb[rkRow][7] = null; }
+      else { nb[rkRow][3] = nb[rkRow][0]; nb[rkRow][0] = null; }
+    }
+    this.board = nb;
+    if (captured) {
+      if (this.currentTurn === IC_WHITE) this.capturedByWhite.push(captured);
+      else this.capturedByBlack.push(captured);
+    }
+    this.moveHistory.push({ move: match, captured, boardBefore, oldEnPassant });
+    this.lastMove = match;
+    this.selectedPiece = null;
+    this.validMoves = [];
+    updateMoveLog(notation);
+    const to = getBoardXY(match.toRow, match.toCol);
+    animatePulse(to.x, to.y, 'rgba(120,200,255,0.9)', this.pieceR, 500);
+    this.currentTurn = 1 - this.currentTurn;
+    this._checkGameEnd(1 - this.currentTurn);
+    this.render();
+    updateUI();
+  }
 
   newGame() {
     this.board = this._createBoard();
@@ -2494,6 +2814,9 @@ class GoGame {
     this.humanColor = 1; // player is black
     this.blackPrisoners = 0; // captured by black (white stones)
     this.whitePrisoners = 0; // captured by white (black stones)
+    this.multiplayer = false;
+    this.mySide = null;
+    this.opponentSide = null;
     this._calcSizes();
     this.render();
     updateUI();
@@ -2518,6 +2841,7 @@ class GoGame {
 
   handleClick(mx, my) {
     if (this.gameOver || this.aiThinking) return;
+    if (this.multiplayer && this.currentPlayer !== this.mySide) return;
     const cs = this.cellSize, px = this.padX, py = this.padY, bs = this.boardSize;
     let br = -1, bc = -1, bd = Infinity;
     for (let r = 0; r < bs; r++) {
@@ -2540,10 +2864,13 @@ class GoGame {
 
     this._placeStone(br, bc);
     this.currentPlayer = 3 - this.currentPlayer;
+    if (this.multiplayer) {
+      mp.sendMove({ row: br, col: bc });
+    }
     updateUI();
     this.render();
 
-    if (!this.gameOver && this.currentPlayer !== this.humanColor) this._scheduleAI();
+    if (!this.multiplayer && !this.gameOver && this.currentPlayer !== this.humanColor) this._scheduleAI();
   }
 
   _isSuicide(r, c, player) {
@@ -2672,6 +2999,7 @@ class GoGame {
 
   pass() {
     if (this.gameOver || this.aiThinking) return;
+    if (this.multiplayer && this.currentPlayer !== this.mySide) return;
     this.passCount++;
     updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
 
@@ -2681,10 +3009,13 @@ class GoGame {
     }
 
     this.currentPlayer = 3 - this.currentPlayer;
+    if (this.multiplayer) {
+      mp.sendPass();
+    }
     updateUI();
     this.render();
 
-    if (!this.gameOver && this.currentPlayer !== this.humanColor) this._scheduleAI();
+    if (!this.multiplayer && !this.gameOver && this.currentPlayer !== this.humanColor) this._scheduleAI();
   }
 
   _endGame() {
@@ -2955,6 +3286,31 @@ class GoGame {
       ? { row: this.moveHistory[this.moveHistory.length - 1].row, col: this.moveHistory[this.moveHistory.length - 1].col }
       : null;
     this.currentPlayer = this.humanColor;
+    updateUI();
+    this.render();
+  }
+
+  applyOpponentMove(data) {
+    if (this.gameOver) return;
+    if (data.row < 0 || data.row >= this.boardSize || data.col < 0 || data.col >= this.boardSize) return;
+    if (this.board[data.row][data.col] !== 0) return;
+    if (this.koPoint && this.koPoint.row === data.row && this.koPoint.col === data.col) return;
+    const oppSide = this.mySide === 'black' ? 2 : 1;
+    this._placeStone(data.row, data.col);
+    this.currentPlayer = this.mySide;
+    this.render();
+    updateUI();
+  }
+
+  applyOpponentPass() {
+    if (this.gameOver) return;
+    this.passCount++;
+    updateMoveLog(this.currentPlayer === 1 ? '● 停着' : '○ 停着');
+    if (this.passCount >= 2) {
+      this._endGame();
+      return;
+    }
+    this.currentPlayer = this.mySide;
     updateUI();
     this.render();
   }
