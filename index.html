@@ -102,8 +102,9 @@ body {
     inset 0 1px 0 rgba(255,255,255,0.03);
   padding: 24px;
   border: 1px solid rgba(212,168,83,0.18);
-  max-width: 960px;
+  max-width: 1100px;
   width: 100%;
+  overflow-x: auto;
   animation: fadeIn 0.5s ease-out;
 }
 
@@ -1603,9 +1604,10 @@ class GomokuGame {
   }
 
   _calcSizes() {
-    const maxW = Math.min(window.innerWidth - 340, 540);
-    const maxH = Math.min(window.innerHeight - 140, 600);
+    const maxW = Math.min(window.innerWidth - 340, this.gkSize <= 15 ? 540 : 700);
+    const maxH = Math.min(window.innerHeight - 140, this.gkSize <= 15 ? 600 : 700);
     this.cellSize = Math.floor(Math.min(maxW / (this.gkSize + 0.5), maxH / (this.gkSize + 0.5)));
+    this.cellSize = Math.max(this.cellSize, 18);
     this.padX = this.cellSize;
     this.padY = this.cellSize;
     this.stoneR = Math.floor(this.cellSize * 0.44);
