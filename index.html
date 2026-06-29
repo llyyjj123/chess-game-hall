@@ -121,7 +121,6 @@ body {
 .board-section {
   position: relative;
   flex-shrink: 0;
-  max-width: 100%;
 }
 
 .board-wrapper {
@@ -131,15 +130,9 @@ body {
     0 8px 32px rgba(0,0,0,0.5),
     0 0 0 3px #3d1c00,
     0 0 0 6px rgba(212,168,83,0.25);
-  max-width: 100%;
 }
 
-canvas {
-  display: block;
-  cursor: pointer;
-  max-width: 100%;
-  height: auto;
-}
+canvas { display: block; cursor: pointer; }
 
 /* ── Side Panel ── */
 .panel {
@@ -2084,13 +2077,7 @@ class GomokuGame {
 
   getPanelHTML() {
     return `<div>
-      <div class="section-title">棋盘大小</div>
-      <div class="size-group" id="gkSizeGroup">
-        <button class="size-btn active" data-size="15">15×15</button>
-        <button class="size-btn" data-size="19">19×19</button>
-        <button class="size-btn" data-size="20">20×20</button>
-      </div>
-      <div class="section-title" style="margin-top:12px;">难度 · Difficulty</div>
+      <div class="section-title">难度 · Difficulty</div>
       <div class="diff-group" id="gkDiffGroup">
         <button class="diff-btn" data-diff="0">😊 简单</button>
         <button class="diff-btn" data-diff="1">🤔 中等</button>
@@ -2108,14 +2095,6 @@ class GomokuGame {
       btn.classList.add('active');
       self.difficulty = parseInt(btn.dataset.diff);
       if (self.moveHistory.length > 0) self.newGame();
-    });
-    document.getElementById('gkSizeGroup').addEventListener('click', function(e) {
-      const btn = e.target.closest('.size-btn');
-      if (!btn) return;
-      this.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      self.gkSize = parseInt(btn.dataset.size);
-      self.newGame();
     });
   }
 
