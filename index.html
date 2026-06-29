@@ -1702,7 +1702,7 @@ class GomokuGame {
   }
 
   // ═══════════════════════════════════════════════════════
-  //  GOMOKU AI ENGINE - Professional Strength
+  //  GOMOKU AI ENGINE - MCTS + Opening Book
   // ═══════════════════════════════════════════════════════
 
   _countLine(r, c, dr, dc, player, board) {
@@ -1732,18 +1732,10 @@ class GomokuGame {
     for (const [dr, dc] of dirs) {
       const { total, openEnds } = this._getLineInfo(r, c, dr, dc, player, board);
       if (total >= 5) score += 100000000;
-      else if (total === 4) {
-        if (openEnds === 2) score += 5000000;
-        else if (openEnds === 1) score += 500000;
-      } else if (total === 3) {
-        if (openEnds === 2) score += 500000;
-        else if (openEnds === 1) score += 50000;
-      } else if (total === 2) {
-        if (openEnds === 2) score += 50000;
-        else if (openEnds === 1) score += 5000;
-      } else if (total === 1) {
-        score += openEnds === 2 ? 500 : 50;
-      }
+      else if (total === 4) score += openEnds === 2 ? 5000000 : openEnds === 1 ? 500000 : 0;
+      else if (total === 3) score += openEnds === 2 ? 500000 : openEnds === 1 ? 50000 : 0;
+      else if (total === 2) score += openEnds === 2 ? 50000 : openEnds === 1 ? 5000 : 0;
+      else if (total === 1) score += openEnds === 2 ? 500 : 50;
     }
     return score;
   }
@@ -1790,20 +1782,139 @@ class GomokuGame {
     return aScore + hScore * 0.9;
   }
 
+  // ── Opening Book ──
+  _getOpeningMove(board, aiPlayer) {
+    const stones = board.flat().filter(x => x !== 0).length;
+    if (stones === 0) return { row: 7, col: 7 }; // First move: center
+    if (stones === 1) {
+      // Second move: play near center stone
+      for (let r = 6; r <= 8; r++)
+        for (let c = 6; c <= 8; c++)
+          if (board[r][c] === 0 && (r !== 7 || c !== 7)) return { row: r, col: c };
+    }
+    return null; // No opening book entry
+  }
+
+  // ── MCTS (Monte Carlo Tree Search) ──
+  _mcts(board, aiPlayer, iterations) {
+    const humanPlayer = 3 - aiPlayer;
+    const root = { board: board.map(r => [...r]), visits: 0, wins: 0, children: null, player: humanPlayer };
+
+    const getLegalMoves = (b) => {
+      const cands = this._getCandidates(b, 2);
+      return cands.filter(m => b[m.row][m.col] === 0);
+    };
+
+    const checkWin = (b, player) => {
+      for (let r = 0; r < GK_SIZE; r++) {
+        for (let c = 0; c < GK_SIZE; c++) {
+          if (b[r][c] !== player) continue;
+          for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
+            let count = 1;
+            for (let i = 1; i < 5; i++) {
+              const nr = r + dr*i, nc = c + dc*i;
+              if (nr < 0 || nr >= GK_SIZE || nc < 0 || nc >= GK_SIZE || b[nr][nc] !== player) break;
+              count++;
+            }
+            if (count >= 5) return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    const simulate = (b, curPlayer) => {
+      let p = curPlayer;
+      let moves = 0;
+      while (moves < 30) {
+        const legal = getLegalMoves(b);
+        if (legal.length === 0) return 0; // Draw
+        // Quick win check before random move
+        for (const m of legal) {
+          b[m.row][m.col] = p;
+          if (checkWin(b, p)) { b[m.row][m.col] = 0; return p === aiPlayer ? 1 : -1; }
+          b[m.row][m.col] = 0;
+        }
+        const m = legal[Math.floor(Math.random() * legal.length)];
+        b[m.row][m.col] = p;
+        if (checkWin(b, p)) { b[m.row][m.col] = 0; return p === aiPlayer ? 1 : -1; }
+        p = 3 - p;
+        moves++;
+      }
+      // Evaluate by score
+      const s = this._evaluateBoard(b, aiPlayer);
+      return s > 0 ? 1 : s < 0 ? -1 : 0;
+    };
+
+    const uct = (child, parentVisits) => {
+      if (child.visits === 0) return Infinity;
+      return child.wins / child.visits + Math.sqrt(2 * Math.log(parentVisits) / child.visits);
+    };
+
+    for (let i = 0; i < iterations; i++) {
+      let node = root;
+      const path = [node];
+
+      // Selection
+      while (node.children && node.children.length > 0) {
+        node = node.children.reduce((best, child) =>
+          uct(child, node.visits) > uct(best, node.visits) ? child : best
+        );
+        path.push(node);
+      }
+
+      // Expansion
+      if (node.visits > 0) {
+        const legal = getLegalMoves(node.board);
+        if (legal.length > 0) {
+          // Sort by threat score for better expansion
+          const scored = legal.map(m => ({
+            ...m,
+            score: this._scoreCandidate(m.row, m.col, node.player, node.board)
+          }));
+          scored.sort((a, b) => b.score - a.score);
+          const topMoves = scored.slice(0, Math.min(10, scored.length));
+
+          node.children = topMoves.map(m => {
+            const nb = node.board.map(r => [...r]);
+            nb[m.row][m.col] = node.player;
+            return { board: nb, visits: 0, wins: 0, children: null, player: 3 - node.player, move: m };
+          });
+          node = node.children[0];
+          path.push(node);
+        }
+      }
+
+      // Simulation
+      const simBoard = node.board.map(r => [...r]);
+      const result = simulate(simBoard, node.player);
+
+      // Backpropagation
+      for (const n of path) {
+        n.visits++;
+        n.wins += n.player === aiPlayer ? (result > 0 ? 1 : result < 0 ? 0 : 0.5) : (result < 0 ? 1 : result > 0 ? 0 : 0.5);
+      }
+    }
+
+    // Select best move
+    if (!root.children || root.children.length === 0) return null;
+    return root.children.reduce((best, child) =>
+      child.visits > best.visits ? child : best
+    ).move;
+  }
+
+  // ── Minimax fallback ──
   _minimax(board, depth, alpha, beta, isMax, aiPlayer, maxCandidates) {
     if (depth === 0) return this._evaluateBoard(board, aiPlayer);
-
     const humanPlayer = 3 - aiPlayer;
     const curPlayer = isMax ? aiPlayer : humanPlayer;
     const candidates = this._getCandidates(board, 2);
     if (candidates.length === 0) return 0;
-
     const scored = candidates.map(m => ({
       ...m, score: this._scoreCandidate(m.row, m.col, curPlayer, board)
     }));
     scored.sort((a, b) => b.score - a.score);
     const topMoves = scored.slice(0, maxCandidates);
-
     if (isMax) {
       let best = -Infinity;
       for (const m of topMoves) {
@@ -1832,14 +1943,11 @@ class GomokuGame {
   _searchBestMove(board, aiPlayer, depth, maxCandidates, range) {
     const candidates = this._getCandidates(board, range);
     if (candidates.length === 0) return { row: 7, col: 7 };
-
-    // Score and sort candidates
     const scored = candidates.map(m => ({
       ...m, score: this._scoreCandidate(m.row, m.col, aiPlayer, board)
     }));
     scored.sort((a, b) => b.score - a.score);
     const topMoves = scored.slice(0, maxCandidates);
-
     let best = topMoves[0], bestScore = -Infinity;
     for (const m of topMoves) {
       board[m.row][m.col] = aiPlayer;
@@ -1858,74 +1966,66 @@ class GomokuGame {
     const candidates = this._getCandidates(board, 2);
     if (candidates.length === 0) return { row: 7, col: 7 };
 
-    // 1. Check immediate win
+    // 1. Opening book
+    const opening = this._getOpeningMove(board, aiPlayer);
+    if (opening) return opening;
+
+    // 2. Immediate win
     for (const m of candidates) {
       board[m.row][m.col] = aiPlayer;
-      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-      for (const [dr, dc] of dirs) {
+      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
         if (this._getLineInfo(m.row, m.col, dr, dc, aiPlayer, board).total >= 5) {
-          board[m.row][m.col] = 0;
-          return m;
+          board[m.row][m.col] = 0; return m;
         }
       }
       board[m.row][m.col] = 0;
     }
 
-    // 2. Block opponent win
+    // 3. Block opponent win
     for (const m of candidates) {
       board[m.row][m.col] = humanPlayer;
-      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-      for (const [dr, dc] of dirs) {
+      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
         if (this._getLineInfo(m.row, m.col, dr, dc, humanPlayer, board).total >= 5) {
-          board[m.row][m.col] = 0;
-          return m;
+          board[m.row][m.col] = 0; return m;
         }
       }
       board[m.row][m.col] = 0;
     }
 
-    // 3. Block opponent open-four (活四)
+    // 4. Block open-four
     for (const m of candidates) {
       board[m.row][m.col] = humanPlayer;
-      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-      for (const [dr, dc] of dirs) {
+      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
         const info = this._getLineInfo(m.row, m.col, dr, dc, humanPlayer, board);
         if (info.total === 4 && info.openEnds === 2) {
-          board[m.row][m.col] = 0;
-          return m;
+          board[m.row][m.col] = 0; return m;
         }
       }
       board[m.row][m.col] = 0;
     }
 
-    // 4. Create open-four for self
+    // 5. Create open-four
     for (const m of candidates) {
       board[m.row][m.col] = aiPlayer;
-      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-      for (const [dr, dc] of dirs) {
+      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
         const info = this._getLineInfo(m.row, m.col, dr, dc, aiPlayer, board);
         if (info.total === 4 && info.openEnds === 2) {
-          board[m.row][m.col] = 0;
-          return m;
+          board[m.row][m.col] = 0; return m;
         }
       }
       board[m.row][m.col] = 0;
     }
 
-    // Difficulty-based search
+    // 6. Difficulty-based play
     switch (this.difficulty) {
-      case 0: // Easy: random near best candidates
+      case 0: // Easy
         return this._searchBestMove(board, aiPlayer, 0, 5, 1);
-
-      case 1: // Medium: 2-ply search
+      case 1: // Medium
         return this._searchBestMove(board, aiPlayer, 1, 8, 2);
-
-      case 2: // Hard: 4-ply search with 12 candidates
-        return this._searchBestMove(board, aiPlayer, 3, 12, 2);
-
-      case 3: // Expert: 4-ply search with 15 candidates, wider range
-        return this._searchBestMove(board, aiPlayer, 3, 15, 3);
-
+      case 2: // Hard: MCTS 500 iterations + minimax
+        return this._mcts(board, aiPlayer, 500) || this._searchBestMove(board, aiPlayer, 3, 12, 2);
+      case 3: // Expert: MCTS 2000 iterations + minimax
+        return this._mcts(board, aiPlayer, 2000) || this._searchBestMove(board, aiPlayer, 3, 15, 3);
       default:
         return this._searchBestMove(board, aiPlayer, 3, 12, 2);
     }
