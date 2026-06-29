@@ -81,6 +81,22 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('opponent-pass');
   });
 
+  socket.on('rematch-request', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    socket.to(roomId).emit('rematch-request');
+  });
+
+  socket.on('rematch-accept', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const hostSide = room.host.side;
+    const joinerSide = room.joiner ? room.joiner.side : null;
+    room.status = 'playing';
+    socket.to(roomId).emit('rematch-start', { hostSide, joinerSide });
+    socket.emit('rematch-start', { hostSide, joinerSide });
+  });
+
   function handleDisconnect() {
     const roomId = socket.data.roomId;
     if (!roomId) return;
