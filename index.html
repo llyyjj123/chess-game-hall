@@ -93,14 +93,14 @@ body {
 /* ── Main Layout ── */
 .main-container {
   display: flex;
-  gap: 12px;
+  gap: 0;
   background: var(--panel-bg);
   border-radius: 16px;
   box-shadow:
     0 0 80px rgba(180,120,40,0.12),
     0 20px 60px rgba(0,0,0,0.5),
     inset 0 1px 0 rgba(255,255,255,0.03);
-  padding: 24px;
+  padding: 20px;
   border: 1px solid rgba(212,168,83,0.18);
   max-width: 1200px;
   width: 100%;
@@ -120,8 +120,11 @@ body {
 
 .board-section {
   position: relative;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .board-wrapper {
@@ -138,13 +141,15 @@ canvas { display: block; cursor: pointer; max-width: 100%; height: auto; }
 
 /* ── Side Panel ── */
 .panel {
-  flex: 0 0 280px;
+  flex: 0 0 270px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-width: 210px;
-  max-height: 540px;
+  max-height: 580px;
   overflow-y: auto;
+  padding-left: 20px;
+  border-left: 1px solid rgba(212,168,83,0.15);
 }
 
 .status-bar {
@@ -985,7 +990,7 @@ class MultiplayerManager {
 
   requestRematch() {
     if (!this.roomId || !this.socket) return;
-    const winner = activeGame && activeGame.gameOver ? activeGame.getWinnerSide() : null;
+    const winner = activeGame && activeGame.gameOver && activeGame.getWinnerSide ? activeGame.getWinnerSide() : null;
     this.socket.emit('rematch-request', { roomId: this.roomId, winner });
   }
 
