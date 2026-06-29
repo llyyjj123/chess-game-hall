@@ -1695,8 +1695,7 @@ class GomokuGame {
   // ═══════════════════════════════════════════════════════
 
   _countLine(r, c, dr, dc, player, board) {
-    let count = 0;
-    let i = 1;
+    let count = 0, i = 1;
     while (true) {
       const nr = r + dr * i, nc = c + dc * i;
       if (nr < 0 || nr >= GK_SIZE || nc < 0 || nc >= GK_SIZE || board[nr][nc] !== player) break;
@@ -1711,31 +1710,28 @@ class GomokuGame {
     const total = fwd + bwd + 1;
     const fEnd = { r: r + dr * (fwd + 1), c: c + dc * (fwd + 1) };
     const bEnd = { r: r - dr * (bwd + 1), c: c - dc * (bwd + 1) };
-    const fOpen = (fEnd.r >= 0 && fEnd.r < GK_SIZE && fEnd.c >= 0 && fEnd.c < GK_SIZE && board[fEnd.r][fEnd.c] === 0);
-    const bOpen = (bEnd.r >= 0 && bEnd.r < GK_SIZE && bEnd.c >= 0 && bEnd.c < GK_SIZE && board[bEnd.r][bEnd.c] === 0);
-    const openEnds = (fOpen ? 1 : 0) + (bOpen ? 1 : 0);
-    return { total, openEnds };
+    const fOpen = fEnd.r >= 0 && fEnd.r < GK_SIZE && fEnd.c >= 0 && fEnd.c < GK_SIZE && board[fEnd.r][fEnd.c] === 0;
+    const bOpen = bEnd.r >= 0 && bEnd.r < GK_SIZE && bEnd.c >= 0 && bEnd.c < GK_SIZE && board[bEnd.r][bEnd.c] === 0;
+    return { total, openEnds: (fOpen ? 1 : 0) + (bOpen ? 1 : 0) };
   }
 
-  _evaluatePosition(r, c, player, board) {
+  _evaluateCell(r, c, player, board) {
     const dirs = [[1,0],[0,1],[1,1],[1,-1]];
     let score = 0;
     for (const [dr, dc] of dirs) {
-      const info = this._getLineInfo(r, c, dr, dc, player, board);
-      const { total, openEnds } = info;
-      if (total >= 5) score += 10000000;
+      const { total, openEnds } = this._getLineInfo(r, c, dr, dc, player, board);
+      if (total >= 5) score += 100000000;
       else if (total === 4) {
+        if (openEnds === 2) score += 5000000;
+        else if (openEnds === 1) score += 500000;
+      } else if (total === 3) {
         if (openEnds === 2) score += 500000;
         else if (openEnds === 1) score += 50000;
-      } else if (total === 3) {
+      } else if (total === 2) {
         if (openEnds === 2) score += 50000;
         else if (openEnds === 1) score += 5000;
-      } else if (total === 2) {
-        if (openEnds === 2) score += 5000;
-        else if (openEnds === 1) score += 500;
       } else if (total === 1) {
-        if (openEnds === 2) score += 100;
-        else if (openEnds === 1) score += 10;
+        score += openEnds === 2 ? 500 : 50;
       }
     }
     return score;
@@ -1746,20 +1742,20 @@ class GomokuGame {
     let aiScore = 0, humanScore = 0;
     for (let r = 0; r < GK_SIZE; r++) {
       for (let c = 0; c < GK_SIZE; c++) {
-        if (board[r][c] === aiPlayer) aiScore += this._evaluatePosition(r, c, aiPlayer, board);
-        else if (board[r][c] === humanPlayer) humanScore += this._evaluatePosition(r, c, humanPlayer, board);
+        if (board[r][c] === aiPlayer) aiScore += this._evaluateCell(r, c, aiPlayer, board);
+        else if (board[r][c] === humanPlayer) humanScore += this._evaluateCell(r, c, humanPlayer, board);
       }
     }
-    return aiScore - humanScore * 1.1;
+    return aiScore - humanScore * 1.15;
   }
 
-  _getCandidates(board) {
+  _getCandidates(board, range) {
     const candidates = new Set();
     for (let r = 0; r < GK_SIZE; r++) {
       for (let c = 0; c < GK_SIZE; c++) {
         if (board[r][c] !== 0) {
-          for (let dr = -2; dr <= 2; dr++) {
-            for (let dc = -2; dc <= 2; dc++) {
+          for (let dr = -range; dr <= range; dr++) {
+            for (let dc = -range; dc <= range; dc++) {
               const nr = r + dr, nc = c + dc;
               if (nr >= 0 && nr < GK_SIZE && nc >= 0 && nc < GK_SIZE && board[nr][nc] === 0) {
                 candidates.add(nr * GK_SIZE + nc);
@@ -1770,36 +1766,38 @@ class GomokuGame {
       }
     }
     if (candidates.size === 0) return [{ row: 7, col: 7 }];
-    const result = [];
-    for (const key of candidates) {
-      result.push({ row: Math.floor(key / GK_SIZE), col: key % GK_SIZE });
-    }
-    return result;
+    return [...candidates].map(k => ({ row: Math.floor(k / GK_SIZE), col: k % GK_SIZE }));
   }
 
-  _minimax(board, depth, alpha, beta, isMax, aiPlayer) {
+  _scoreCandidate(r, c, aiPlayer, board) {
+    const humanPlayer = 3 - aiPlayer;
+    board[r][c] = aiPlayer;
+    const aScore = this._evaluateCell(r, c, aiPlayer, board);
+    board[r][c] = humanPlayer;
+    const hScore = this._evaluateCell(r, c, humanPlayer, board);
+    board[r][c] = 0;
+    return aScore + hScore * 0.9;
+  }
+
+  _minimax(board, depth, alpha, beta, isMax, aiPlayer, maxCandidates) {
     if (depth === 0) return this._evaluateBoard(board, aiPlayer);
 
     const humanPlayer = 3 - aiPlayer;
     const curPlayer = isMax ? aiPlayer : humanPlayer;
-
-    const candidates = this._getCandidates(board);
+    const candidates = this._getCandidates(board, 2);
     if (candidates.length === 0) return 0;
 
-    const scored = candidates.map(m => {
-      board[m.row][m.col] = curPlayer;
-      const s = this._evaluatePosition(m.row, m.col, curPlayer, board);
-      board[m.row][m.col] = 0;
-      return { ...m, score: s };
-    });
+    const scored = candidates.map(m => ({
+      ...m, score: this._scoreCandidate(m.row, m.col, curPlayer, board)
+    }));
     scored.sort((a, b) => b.score - a.score);
-    const topMoves = scored.slice(0, depth >= 2 ? 12 : 8);
+    const topMoves = scored.slice(0, maxCandidates);
 
     if (isMax) {
       let best = -Infinity;
       for (const m of topMoves) {
         board[m.row][m.col] = aiPlayer;
-        const val = this._minimax(board, depth - 1, alpha, beta, false, aiPlayer);
+        const val = this._minimax(board, depth - 1, alpha, beta, false, aiPlayer, maxCandidates);
         board[m.row][m.col] = 0;
         best = Math.max(best, val);
         alpha = Math.max(alpha, best);
@@ -1810,7 +1808,7 @@ class GomokuGame {
       let best = Infinity;
       for (const m of topMoves) {
         board[m.row][m.col] = humanPlayer;
-        const val = this._minimax(board, depth - 1, alpha, beta, true, aiPlayer);
+        const val = this._minimax(board, depth - 1, alpha, beta, true, aiPlayer, maxCandidates);
         board[m.row][m.col] = 0;
         best = Math.min(best, val);
         beta = Math.min(beta, best);
@@ -1820,27 +1818,46 @@ class GomokuGame {
     }
   }
 
+  _searchBestMove(board, aiPlayer, depth, maxCandidates, range) {
+    const candidates = this._getCandidates(board, range);
+    if (candidates.length === 0) return { row: 7, col: 7 };
+
+    // Score and sort candidates
+    const scored = candidates.map(m => ({
+      ...m, score: this._scoreCandidate(m.row, m.col, aiPlayer, board)
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    const topMoves = scored.slice(0, maxCandidates);
+
+    let best = topMoves[0], bestScore = -Infinity;
+    for (const m of topMoves) {
+      board[m.row][m.col] = aiPlayer;
+      const s = this._minimax(board, depth, -Infinity, Infinity, false, aiPlayer, maxCandidates);
+      board[m.row][m.col] = 0;
+      if (s > bestScore) { bestScore = s; best = m; }
+    }
+    return best;
+  }
+
   _getAIMove() {
     const aiPlayer = 3 - this.humanColor;
     const humanPlayer = this.humanColor;
     const board = this.board;
 
-    const candidates = this._getCandidates(board);
+    const candidates = this._getCandidates(board, 2);
     if (candidates.length === 0) return { row: 7, col: 7 };
 
     // 1. Check immediate win
     for (const m of candidates) {
       board[m.row][m.col] = aiPlayer;
-      const info = this._getLineInfo(m.row, m.col, 1, 0, aiPlayer, board)
-        .total >= 5 ? { total: 5 } :
-        this._getLineInfo(m.row, m.col, 0, 1, aiPlayer, board).total >= 5 ? { total: 5 } :
-        this._getLineInfo(m.row, m.col, 1, 1, aiPlayer, board).total >= 5 ? { total: 5 } :
-        this._getLineInfo(m.row, m.col, 1, -1, aiPlayer, board);
-      board[m.row][m.col] = 0;
       const dirs = [[1,0],[0,1],[1,1],[1,-1]];
       for (const [dr, dc] of dirs) {
-        if (this._getLineInfo(m.row, m.col, dr, dc, aiPlayer, board).total >= 5) return m;
+        if (this._getLineInfo(m.row, m.col, dr, dc, aiPlayer, board).total >= 5) {
+          board[m.row][m.col] = 0;
+          return m;
+        }
       }
+      board[m.row][m.col] = 0;
     }
 
     // 2. Block opponent win
@@ -1856,63 +1873,50 @@ class GomokuGame {
       board[m.row][m.col] = 0;
     }
 
+    // 3. Block opponent open-four (活四)
+    for (const m of candidates) {
+      board[m.row][m.col] = humanPlayer;
+      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+      for (const [dr, dc] of dirs) {
+        const info = this._getLineInfo(m.row, m.col, dr, dc, humanPlayer, board);
+        if (info.total === 4 && info.openEnds === 2) {
+          board[m.row][m.col] = 0;
+          return m;
+        }
+      }
+      board[m.row][m.col] = 0;
+    }
+
+    // 4. Create open-four for self
+    for (const m of candidates) {
+      board[m.row][m.col] = aiPlayer;
+      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+      for (const [dr, dc] of dirs) {
+        const info = this._getLineInfo(m.row, m.col, dr, dc, aiPlayer, board);
+        if (info.total === 4 && info.openEnds === 2) {
+          board[m.row][m.col] = 0;
+          return m;
+        }
+      }
+      board[m.row][m.col] = 0;
+    }
+
     // Difficulty-based search
-    if (this.difficulty === 0) {
-      // Easy: random with slight preference
-      let best = candidates[0], bestS = -Infinity;
-      for (const m of candidates) {
-        board[m.row][m.col] = aiPlayer;
-        const s = this._evaluatePosition(m.row, m.col, aiPlayer, board) * 0.8 +
-                  this._evaluatePosition(m.row, m.col, humanPlayer, board) * 0.2;
-        board[m.row][m.col] = 0;
-        if (s > bestS || (s === bestS && Math.random() > 0.5)) { bestS = s; best = m; }
-      }
-      return best;
-    }
+    switch (this.difficulty) {
+      case 0: // Easy: random near best candidates
+        return this._searchBestMove(board, aiPlayer, 0, 5, 1);
 
-    if (this.difficulty === 1) {
-      // Medium: 1-ply search
-      let best = candidates[0], bestS = -Infinity;
-      for (const m of candidates) {
-        board[m.row][m.col] = aiPlayer;
-        const s = this._evaluateBoard(board, aiPlayer);
-        board[m.row][m.col] = 0;
-        if (s > bestS || (s === bestS && Math.random() > 0.5)) { bestS = s; best = m; }
-      }
-      return best;
-    }
+      case 1: // Medium: 2-ply search
+        return this._searchBestMove(board, aiPlayer, 1, 8, 2);
 
-    if (this.difficulty === 2) {
-      // Hard: 2-ply minimax
-      let best = candidates[0], bestS = -Infinity;
-      for (const m of candidates) {
-        board[m.row][m.col] = aiPlayer;
-        const s = this._minimax(board, 1, -Infinity, Infinity, false, aiPlayer);
-        board[m.row][m.col] = 0;
-        if (s > bestS || (s === bestS && Math.random() > 0.5)) { bestS = s; best = m; }
-      }
-      return best;
-    }
+      case 2: // Hard: 4-ply search with 12 candidates
+        return this._searchBestMove(board, aiPlayer, 3, 12, 2);
 
-    // Expert (difficulty 3): 3-ply with deeper candidate filtering
-    {
-      const scored = candidates.map(m => {
-        board[m.row][m.col] = aiPlayer;
-        const s = this._evaluateBoard(board, aiPlayer);
-        board[m.row][m.col] = 0;
-        return { ...m, score: s };
-      });
-      scored.sort((a, b) => b.score - a.score);
-      const topMoves = scored.slice(0, 10);
+      case 3: // Expert: 4-ply search with 15 candidates, wider range
+        return this._searchBestMove(board, aiPlayer, 3, 15, 3);
 
-      let best = topMoves[0], bestS = -Infinity;
-      for (const m of topMoves) {
-        board[m.row][m.col] = aiPlayer;
-        const s = this._minimax(board, 2, -Infinity, Infinity, false, aiPlayer);
-        board[m.row][m.col] = 0;
-        if (s > bestS) { bestS = s; best = m; }
-      }
-      return best;
+      default:
+        return this._searchBestMove(board, aiPlayer, 3, 12, 2);
     }
   }
 
