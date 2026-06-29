@@ -910,11 +910,9 @@ class MultiplayerManager {
       if (activeGame) {
         activeGame.newGame();
         activeGame.multiplayer = true;
-        if (activeGame.mySide === 'red' || activeGame.mySide === 'white') {
-          activeGame.mySide = hostSide;
-        } else {
-          activeGame.mySide = joinerSide;
-        }
+        activeGame.mySide = this.mySide;
+        activeGame.opponentSide = this.mySide === hostSide ? joinerSide : hostSide;
+        activeGame.currentPlayer = activeGame.mySide === 'black' ? 1 : 2;
       }
       updateMPPanel();
       updateUI();
@@ -2022,10 +2020,10 @@ class GomokuGame {
         return this._searchBestMove(board, aiPlayer, 0, 5, 1);
       case 1: // Medium
         return this._searchBestMove(board, aiPlayer, 1, 8, 2);
-      case 2: // Hard: MCTS 500 iterations + minimax
-        return this._mcts(board, aiPlayer, 500) || this._searchBestMove(board, aiPlayer, 3, 12, 2);
-      case 3: // Expert: MCTS 2000 iterations + minimax
-        return this._mcts(board, aiPlayer, 2000) || this._searchBestMove(board, aiPlayer, 3, 15, 3);
+      case 2: // Hard: MCTS 200 iterations + minimax
+        return this._mcts(board, aiPlayer, 200) || this._searchBestMove(board, aiPlayer, 3, 12, 2);
+      case 3: // Expert: MCTS 500 iterations + minimax
+        return this._mcts(board, aiPlayer, 500) || this._searchBestMove(board, aiPlayer, 3, 15, 3);
       default:
         return this._searchBestMove(board, aiPlayer, 3, 12, 2);
     }
