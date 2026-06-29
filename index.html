@@ -93,7 +93,7 @@ body {
 /* ── Main Layout ── */
 .main-container {
   display: flex;
-  gap: 20px;
+  gap: 12px;
   background: var(--panel-bg);
   border-radius: 16px;
   box-shadow:
@@ -138,7 +138,7 @@ canvas { display: block; cursor: pointer; max-width: 100%; height: auto; }
 
 /* ── Side Panel ── */
 .panel {
-  flex: 1;
+  flex: 0 0 280px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -878,6 +878,7 @@ class MultiplayerManager {
         activeGame.multiplayer = true;
         activeGame.mySide = this.mySide;
         activeGame.opponentSide = opponentSide;
+        if (activeGame._calcSizes) { activeGame._calcSizes(); activeGame.render(); }
       }
       updateMPPanel();
       updateUI();
@@ -943,6 +944,7 @@ class MultiplayerManager {
       if (activeGame) {
         activeGame.multiplayer = true;
         activeGame.mySide = this.mySide;
+        if (activeGame._calcSizes) { activeGame._calcSizes(); activeGame.render(); }
       }
       updateMPPanel();
       updateUI();
@@ -1096,7 +1098,8 @@ class ChineseChessGame {
     this.canvas.height = bh;
     this.boardW = bw; this.boardH = bh;
     const cs = this.cellSize, px = this.padX, py = this.padY;
-    getBoardXY = (r, c) => ({ x: px + c * cs, y: py + r * cs });
+    const flip = this.multiplayer && this.mySide === 'black';
+    getBoardXY = (r, c) => ({ x: px + (flip ? 8 - c : c) * cs, y: py + (flip ? 9 - r : r) * cs });
   }
 
   _createBoard() {
@@ -1314,10 +1317,12 @@ class ChineseChessGame {
       if (this.currentTurn !== mySideNum) return;
     }
     const cs = this.cellSize, px = this.padX, py = this.padY;
+    const flip = this.multiplayer && this.mySide === 'black';
     let br = -1, bc = -1, bd = Infinity;
     for (let r = 0; r < 10; r++) {
       for (let c = 0; c < 9; c++) {
-        const dx = mx - (px + c * cs), dy = my - (py + r * cs);
+        const vr = flip ? 9 - r : r, vc = flip ? 8 - c : c;
+        const dx = mx - (px + vc * cs), dy = my - (py + vr * cs);
         const d = Math.sqrt(dx*dx+dy*dy);
         if (d < bd && d < cs*0.6) { bd = d; br = r; bc = c; }
       }
@@ -1453,6 +1458,7 @@ class ChineseChessGame {
     this.moveHistory = []; this.capturedByRed = []; this.capturedByBlack = [];
     this.gameOver = false; this.gameResult = ''; this.aiThinking = false; this.lastMove = null;
     this.multiplayer = false; this.mySide = null; this.opponentSide = null;
+    this._calcSizes();
     currentRenderFn = () => this.render();
     this.render();
     updateUI();
@@ -1485,7 +1491,9 @@ class ChineseChessGame {
     ctx.strokeStyle = bdrGrad; ctx.lineWidth = 4; ctx.strokeRect(2, 2, w - 4, h - 4);
     ctx.strokeStyle = 'rgba(61,28,0,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(6, 6, w - 12, h - 12);
     const cs = this.cellSize, px = this.padX, py = this.padY;
-    const tx = c => px + c * cs, ty = r => py + r * cs;
+    const flip = this.multiplayer && this.mySide === 'black';
+    const tx = c => px + (flip ? 8 - c : c) * cs;
+    const ty = r => py + (flip ? 9 - r : r) * cs;
     ctx.strokeStyle = '#5c3d2e'; ctx.lineWidth = 1; ctx.beginPath();
     for (let r = 0; r < 10; r++) { const y = ty(r); ctx.moveTo(tx(0), y); ctx.lineTo(tx(8), y); }
     for (let c = 0; c < 9; c++) { const x = tx(c); ctx.moveTo(x, ty(0)); ctx.lineTo(x, ty(4)); ctx.moveTo(x, ty(5)); ctx.lineTo(x, ty(9)); }
@@ -1535,7 +1543,8 @@ class ChineseChessGame {
   }
 
   _drawPiece(row, col, piece) {
-    const ctx = this.ctx, x = this.padX + col * this.cellSize, y = this.padY + row * this.cellSize;
+    const flip = this.multiplayer && this.mySide === 'black';
+    const ctx = this.ctx, x = this.padX + (flip ? 8 - col : col) * this.cellSize, y = this.padY + (flip ? 9 - row : row) * this.cellSize;
     const r = this.pieceR;
     ctx.save();
     ctx.beginPath(); ctx.arc(x + 1.5, y + 1.5, r, 0, Math.PI * 2);
@@ -1604,6 +1613,8 @@ class ChineseChessGame {
 // ===================================================================
 
 const GK_SIZE = 19;
+const GK_DIRS = [[1,0],[0,1],[1,1],[1,-1]];
+const GK_DIRS8 = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
 
 class GomokuGame {
   constructor(canvas, ctx) {
@@ -1703,8 +1714,8 @@ class GomokuGame {
   }
 
   _checkWin(r, c, player) {
-    const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-    for (const [dr, dc] of dirs) {
+    for (let d = 0; d < 4; d++) {
+      const dr = GK_DIRS[d][0], dc = GK_DIRS[d][1];
       let count = 1;
       const cells = [{ row: r, col: c }];
       // Forward
@@ -1759,7 +1770,8 @@ class GomokuGame {
 
   _threatScore(r, c, player, board, size) {
     let score = 0;
-    for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
+    for (let d = 0; d < 4; d++) {
+      const dr = GK_DIRS[d][0], dc = GK_DIRS[d][1];
       const { total, openEnds } = this._getLineInfo(r, c, dr, dc, player, board, size);
       if (total >= 5) score += 100000000;
       else if (total === 4) {
@@ -1781,18 +1793,11 @@ class GomokuGame {
   _evaluateBoard(board, aiPlayer, size) {
     const humanPlayer = 3 - aiPlayer;
     let aiScore = 0, humanScore = 0;
-    const center = Math.floor(size / 2);
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
-        if (board[r][c] === aiPlayer) {
-          aiScore += this._threatScore(r, c, aiPlayer, board, size);
-          const dist = Math.abs(r - center) + Math.abs(c - center);
-          aiScore += Math.max(0, (center - dist)) * 50;
-        } else if (board[r][c] === humanPlayer) {
-          humanScore += this._threatScore(r, c, humanPlayer, board, size);
-          const dist = Math.abs(r - center) + Math.abs(c - center);
-          humanScore += Math.max(0, (center - dist)) * 50;
-        }
+        const cell = board[r][c];
+        if (cell === aiPlayer) aiScore += this._threatScore(r, c, aiPlayer, board, size);
+        else if (cell === humanPlayer) humanScore += this._threatScore(r, c, humanPlayer, board, size);
       }
     }
     return aiScore - humanScore * 1.1;
@@ -1833,20 +1838,21 @@ class GomokuGame {
     return scored.slice(0, maxMoves);
   }
 
-  _minimax(board, depth, alpha, beta, isMax, aiPlayer, size, maxMoves, deadline) {
-    if (Date.now() > deadline) return this._evaluateBoard(board, aiPlayer, size);
+  _minimax(board, depth, alpha, beta, isMax, aiPlayer, size, maxMoves, deadline, nodeCount) {
+    if ((nodeCount & 63) === 0 && Date.now() > deadline) return this._evaluateBoard(board, aiPlayer, size);
     if (depth === 0) return this._evaluateBoard(board, aiPlayer, size);
 
     const humanPlayer = 3 - aiPlayer;
     const curPlayer = isMax ? aiPlayer : humanPlayer;
     const moves = this._getOrderedMoves(board, curPlayer, size, 2, maxMoves);
     if (moves.length === 0) return 0;
+    nodeCount++;
 
     if (isMax) {
       let best = -Infinity;
       for (const m of moves) {
         board[m.row][m.col] = aiPlayer;
-        const val = this._minimax(board, depth - 1, alpha, beta, false, aiPlayer, size, maxMoves, deadline);
+        const val = this._minimax(board, depth - 1, alpha, beta, false, aiPlayer, size, maxMoves, deadline, nodeCount);
         board[m.row][m.col] = 0;
         best = Math.max(best, val);
         alpha = Math.max(alpha, best);
@@ -1857,7 +1863,7 @@ class GomokuGame {
       let best = Infinity;
       for (const m of moves) {
         board[m.row][m.col] = humanPlayer;
-        const val = this._minimax(board, depth - 1, alpha, beta, true, aiPlayer, size, maxMoves, deadline);
+        const val = this._minimax(board, depth - 1, alpha, beta, true, aiPlayer, size, maxMoves, deadline, nodeCount);
         board[m.row][m.col] = 0;
         best = Math.min(best, val);
         beta = Math.min(beta, best);
@@ -1898,8 +1904,8 @@ class GomokuGame {
     // Immediate win
     for (const m of candidates) {
       board[m.row][m.col] = aiPlayer;
-      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
-        if (this._getLineInfo(m.row, m.col, dr, dc, aiPlayer, board, size).total >= 5) {
+      for (let d = 0; d < 4; d++) {
+        if (this._getLineInfo(m.row, m.col, GK_DIRS[d][0], GK_DIRS[d][1], aiPlayer, board, size).total >= 5) {
           board[m.row][m.col] = 0; return m;
         }
       }
@@ -1909,8 +1915,8 @@ class GomokuGame {
     // Block opponent win
     for (const m of candidates) {
       board[m.row][m.col] = humanPlayer;
-      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
-        if (this._getLineInfo(m.row, m.col, dr, dc, humanPlayer, board, size).total >= 5) {
+      for (let d = 0; d < 4; d++) {
+        if (this._getLineInfo(m.row, m.col, GK_DIRS[d][0], GK_DIRS[d][1], humanPlayer, board, size).total >= 5) {
           board[m.row][m.col] = 0; return m;
         }
       }
@@ -1920,8 +1926,8 @@ class GomokuGame {
     // Block open-four
     for (const m of candidates) {
       board[m.row][m.col] = humanPlayer;
-      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
-        const info = this._getLineInfo(m.row, m.col, dr, dc, humanPlayer, board, size);
+      for (let d = 0; d < 4; d++) {
+        const info = this._getLineInfo(m.row, m.col, GK_DIRS[d][0], GK_DIRS[d][1], humanPlayer, board, size);
         if (info.total === 4 && info.openEnds === 2) {
           board[m.row][m.col] = 0; return m;
         }
@@ -1932,8 +1938,8 @@ class GomokuGame {
     // Create open-four
     for (const m of candidates) {
       board[m.row][m.col] = aiPlayer;
-      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
-        const info = this._getLineInfo(m.row, m.col, dr, dc, aiPlayer, board, size);
+      for (let d = 0; d < 4; d++) {
+        const info = this._getLineInfo(m.row, m.col, GK_DIRS[d][0], GK_DIRS[d][1], aiPlayer, board, size);
         if (info.total === 4 && info.openEnds === 2) {
           board[m.row][m.col] = 0; return m;
         }
@@ -1942,8 +1948,8 @@ class GomokuGame {
     }
 
     // Iterative deepening with time limit
-    const timeLimits = [200, 500, 1500, 4000];
-    const maxMovesList = [6, 10, 16, 22];
+    const timeLimits = [200, 500, 1200, 3000];
+    const maxMovesList = [6, 10, 12, 16];
     const timeLimit = timeLimits[this.difficulty] || 300;
     const deadline = startTime + timeLimit;
     const maxMoves = maxMovesList[this.difficulty] || 10;
@@ -1951,7 +1957,7 @@ class GomokuGame {
     let bestMove = candidates[0];
     let bestScore = -Infinity;
 
-    for (let depth = 1; depth <= (this.difficulty >= 2 ? 6 : 2); depth++) {
+    for (let depth = 1; depth <= (this.difficulty >= 2 ? 4 : 2); depth++) {
       if (Date.now() > deadline) break;
 
       const moves = this._getOrderedMoves(board, aiPlayer, size, 2, maxMoves);
@@ -1961,7 +1967,7 @@ class GomokuGame {
       for (const m of moves) {
         if (Date.now() > deadline) break;
         board[m.row][m.col] = aiPlayer;
-        const score = this._minimax(board, depth - 1, -Infinity, Infinity, false, aiPlayer, size, maxMoves, deadline);
+        const score = this._minimax(board, depth - 1, -Infinity, Infinity, false, aiPlayer, size, maxMoves, deadline, 0);
         board[m.row][m.col] = 0;
 
         if (score > currentScore) {
