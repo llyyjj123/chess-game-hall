@@ -753,6 +753,17 @@ function updateUI() {
   document.getElementById('statusDot').className = 'status-dot ' + dotClass;
   document.getElementById('statusText').textContent = activeGame.getStatusText();
   document.getElementById('moveHint').textContent = activeGame.getHintText ? activeGame.getHintText() : '';
+
+  // Update extra actions (rematch button etc)
+  const extraEl = document.getElementById('extraActions');
+  let extraHTML = activeGame.getExtraActionsHTML ? activeGame.getExtraActionsHTML() : '';
+  if (activeGame.multiplayer && activeGame.gameOver && mp.roomId) {
+    extraHTML += `<button class="btn primary" id="btnRematch" style="width:100%">🔄 再来一局</button>`;
+  }
+  extraEl.innerHTML = extraHTML;
+  extraEl.style.display = extraHTML ? '' : 'none';
+  const rematchBtn = document.getElementById('btnRematch');
+  if (rematchBtn) rematchBtn.onclick = () => mp.requestRematch();
 }
 
 function updateMoveLog(moveText) {
