@@ -1611,15 +1611,15 @@ class GomokuGame {
   }
 
   _calcSizes() {
-    const maxW = Math.min(window.innerWidth - 320, this.gkSize <= 15 ? 520 : 560);
-    const maxH = Math.min(window.innerHeight - 100, this.gkSize <= 15 ? 560 : 560);
-    this.cellSize = Math.floor(Math.min(maxW / (this.gkSize + 1), maxH / (this.gkSize + 1)));
-    this.cellSize = Math.max(this.cellSize, 18);
-    this.padX = Math.floor(this.cellSize * 0.8);
-    this.padY = Math.floor(this.cellSize * 0.8);
+    const maxW = Math.min(window.innerWidth - 300, 620);
+    const maxH = Math.min(window.innerHeight - 80, 660);
+    const bs = this.gkSize;
+    this.cellSize = Math.floor(Math.min(maxW / (bs + 0.5), maxH / (bs + 0.5)));
+    this.padX = this.cellSize;
+    this.padY = this.cellSize;
     this.stoneR = Math.floor(this.cellSize * 0.44);
-    const bw = (this.gkSize - 1) * this.cellSize + this.padX * 2;
-    const bh = (this.gkSize - 1) * this.cellSize + this.padY * 2;
+    const bw = (bs - 1) * this.cellSize + this.padX * 2;
+    const bh = (bs - 1) * this.cellSize + this.padY * 2;
     this.canvas.width = bw;
     this.canvas.height = bh;
     const cs = this.cellSize, px = this.padX, py = this.padY;
