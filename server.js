@@ -88,6 +88,20 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('rematch-request', { winner });
   });
 
+  socket.on('draw-offer', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.status !== 'playing') return;
+    socket.to(roomId).emit('draw-offer');
+  });
+
+  socket.on('draw-accept', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.status !== 'playing') return;
+    room.status = 'finished';
+    socket.to(roomId).emit('draw-agreed');
+    socket.emit('draw-agreed');
+  });
+
   socket.on('rematch-accept', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return;
