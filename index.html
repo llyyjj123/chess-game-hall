@@ -102,7 +102,7 @@ body {
     inset 0 1px 0 rgba(255,255,255,0.03);
   padding: 24px;
   border: 1px solid rgba(212,168,83,0.18);
-  max-width: 1100px;
+  max-width: 1200px;
   width: 100%;
   overflow-x: auto;
   animation: fadeIn 0.5s ease-out;
@@ -125,7 +125,7 @@ body {
 
 .board-wrapper {
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow:
     0 8px 32px rgba(0,0,0,0.5),
     0 0 0 3px #3d1c00,
@@ -1604,14 +1604,12 @@ class GomokuGame {
   }
 
   _calcSizes() {
-    const gap = 20;
-    const panelW = 280;
-    const maxW = Math.min(window.innerWidth - panelW - gap * 3, this.gkSize <= 15 ? 560 : 680);
-    const maxH = Math.min(window.innerHeight - 160, this.gkSize <= 15 ? 580 : 680);
-    this.cellSize = Math.floor(Math.min(maxW / (this.gkSize + 1), maxH / (this.gkSize + 1)));
+    const maxW = Math.min(window.innerWidth - 300, this.gkSize <= 15 ? 560 : 640);
+    const maxH = Math.min(window.innerHeight - 80, this.gkSize <= 15 ? 580 : 640);
+    this.cellSize = Math.floor(Math.min(maxW / (this.gkSize + 0.5), maxH / (this.gkSize + 0.5)));
     this.cellSize = Math.max(this.cellSize, 20);
-    this.padX = Math.floor(this.cellSize * 0.8);
-    this.padY = Math.floor(this.cellSize * 0.8);
+    this.padX = this.cellSize;
+    this.padY = this.cellSize;
     this.stoneR = Math.floor(this.cellSize * 0.44);
     const bw = (this.gkSize - 1) * this.cellSize + this.padX * 2;
     const bh = (this.gkSize - 1) * this.cellSize + this.padY * 2;
