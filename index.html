@@ -120,19 +120,21 @@ body {
 
 .board-section {
   position: relative;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .board-wrapper {
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow:
     0 8px 32px rgba(0,0,0,0.5),
     0 0 0 3px #3d1c00,
     0 0 0 6px rgba(212,168,83,0.25);
+  display: inline-block;
 }
 
-canvas { display: block; cursor: pointer; }
+canvas { display: block; cursor: pointer; max-width: 100%; height: auto; }
 
 /* ── Side Panel ── */
 .panel {
@@ -1221,8 +1223,23 @@ class ChineseChessGame {
   }
 
   _evaluate(b, side) {
-    let score=0;
-    for(let r=0;r<10;r++)for(let c=0;c<9;c++){const p=b[r][c];if(!p)continue;let v=CC_VALUES[p.type];if(p.type===CC_PAWN&&this._crossedRiver(r,p.side))v=CC_PAWN_CROSSED;score+=p.side===side?v:-v;}
+    let score = 0;
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = b[r][c];
+        if (!p) continue;
+        let v = CC_VALUES[p.type];
+        if (p.type === CC_PAWN && this._crossedRiver(r, p.side)) v = CC_PAWN_CROSSED;
+        const rowIdx = p.side === BLACK ? r : 9 - r;
+        switch (p.type) {
+          case CC_ROOK: v += ROOK_BONUS[rowIdx][c]; break;
+          case CC_HORSE: v += HORSE_BONUS[rowIdx][c]; break;
+          case CC_CANNON: v += CANNON_BONUS[rowIdx][c]; break;
+          case CC_PAWN: v += PAWN_BONUS[rowIdx][c]; break;
+        }
+        score += p.side === side ? v : -v;
+      }
+    }
     return score;
   }
 
@@ -1235,14 +1252,15 @@ class ChineseChessGame {
     });
   }
 
-  _minimax(b, depth, alpha, beta, isMax, side) {
+  _minimax(b, depth, alpha, beta, isMax, side, deadline) {
     if(depth===0)return this._evaluate(b,side);
+    if(deadline&&Date.now()>deadline)return this._evaluate(b,side);
     const curSide=isMax?side:1-side;
     const all=this._allLegalMoves(b,curSide);
     if(all.length===0)return isMax?-99999+depth:99999-depth;
     const ord=this._orderMoves(b,all);
-    if(isMax){let me=-Infinity;for(const m of ord){const s=this._cloneBoard(b);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;me=Math.max(me,this._minimax(s,depth-1,alpha,beta,false,side));alpha=Math.max(alpha,me);if(beta<=alpha)break;}return me;}
-    else{let me=Infinity;for(const m of ord){const s=this._cloneBoard(b);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;me=Math.min(me,this._minimax(s,depth-1,alpha,beta,true,side));beta=Math.min(beta,me);if(beta<=alpha)break;}return me;}
+    if(isMax){let me=-Infinity;for(const m of ord){const s=this._cloneBoard(b);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;me=Math.max(me,this._minimax(s,depth-1,alpha,beta,false,side,deadline));alpha=Math.max(alpha,me);if(beta<=alpha)break;}return me;}
+    else{let me=Infinity;for(const m of ord){const s=this._cloneBoard(b);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;me=Math.min(me,this._minimax(s,depth-1,alpha,beta,true,side,deadline));beta=Math.min(beta,me);if(beta<=alpha)break;}return me;}
   }
 
   _getAIMove() {
@@ -1250,7 +1268,7 @@ class ChineseChessGame {
     if(all.length===0)return null;
     if(this.difficulty===0){
       const ord=this._orderMoves(this.board,[...all]);
-      const topN=Math.max(3,Math.floor(ord.length*0.4));
+      const topN=Math.max(3,Math.floor(ord.length*0.6));
       return ord[Math.min(Math.floor(Math.random()*topN),ord.length-1)];
     }
     if(this.difficulty===1){
@@ -1262,21 +1280,31 @@ class ChineseChessGame {
       return bm;
     }
     if(this.difficulty===2){
-      let bm=all[0],bs=-Infinity;
-      for(const m of this._orderMoves(this.board,[...all])){
+      const ord=this._orderMoves(this.board,[...all]).slice(0,30);
+      let bm=ord[0],bs=-Infinity;
+      for(const m of ord){
         const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
-        const sc=this._minimax(s,2,-Infinity,Infinity,false,BLACK);if(sc>bs){bs=sc;bm=m;}
+        const sc=this._minimax(s,3,-Infinity,Infinity,false,BLACK);if(sc>bs){bs=sc;bm=m;}
       }
       return bm;
     }
-    // Expert: depth 3 with move pruning
-    const ord=this._orderMoves(this.board,[...all]).slice(0,20);
-    let bm=ord[0],bs=-Infinity;
-    for(const m of ord){
-      const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
-      const sc=this._minimax(s,3,-Infinity,Infinity,false,BLACK);if(sc>bs){bs=sc;bm=m;}
+    // Master: iterative deepening, 3s time budget, top 25 moves
+    const deadline=Date.now()+3000;
+    const ord=this._orderMoves(this.board,[...all]).slice(0,25);
+    let bestMove=ord[0];
+    for(let depth=1;depth<=6;depth++){
+      if(Date.now()>deadline)break;
+      let bm=ord[0],bs=-Infinity,searched=0;
+      for(const m of ord){
+        if(Date.now()>deadline)break;
+        const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
+        const sc=this._minimax(s,depth,-Infinity,Infinity,false,BLACK,deadline);
+        if(sc>bs){bs=sc;bm=m;}
+        searched++;
+      }
+      if(searched>0)bestMove=bm;
     }
-    return bm;
+    return bestMove;
   }
 
   handleClick(mx, my) {
@@ -1344,6 +1372,7 @@ class ChineseChessGame {
     this.aiThinking = true;
     updateUI();
 
+    const delay = this.difficulty >= 2 ? 300 + Math.random() * 200 : 0;
     setTimeout(() => {
       if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
       const move = this._getAIMove();
@@ -1574,7 +1603,7 @@ class ChineseChessGame {
 //  GOMOKU (五子棋)
 // ===================================================================
 
-const GK_SIZE = 15;
+const GK_SIZE = 19;
 
 class GomokuGame {
   constructor(canvas, ctx) {
@@ -1584,7 +1613,7 @@ class GomokuGame {
   }
 
   init() {
-    this.gkSize = 15;
+    this.gkSize = 19;
     this.board = Array.from({length: this.gkSize}, () => Array(this.gkSize).fill(0));
     this.currentPlayer = 1;
     this.moveHistory = [];
@@ -1752,10 +1781,18 @@ class GomokuGame {
   _evaluateBoard(board, aiPlayer, size) {
     const humanPlayer = 3 - aiPlayer;
     let aiScore = 0, humanScore = 0;
+    const center = Math.floor(size / 2);
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
-        if (board[r][c] === aiPlayer) aiScore += this._threatScore(r, c, aiPlayer, board, size);
-        else if (board[r][c] === humanPlayer) humanScore += this._threatScore(r, c, humanPlayer, board, size);
+        if (board[r][c] === aiPlayer) {
+          aiScore += this._threatScore(r, c, aiPlayer, board, size);
+          const dist = Math.abs(r - center) + Math.abs(c - center);
+          aiScore += Math.max(0, (center - dist)) * 50;
+        } else if (board[r][c] === humanPlayer) {
+          humanScore += this._threatScore(r, c, humanPlayer, board, size);
+          const dist = Math.abs(r - center) + Math.abs(c - center);
+          humanScore += Math.max(0, (center - dist)) * 50;
+        }
       }
     }
     return aiScore - humanScore * 1.1;
@@ -1905,8 +1942,8 @@ class GomokuGame {
     }
 
     // Iterative deepening with time limit
-    const timeLimits = [100, 300, 800, 2000];
-    const maxMovesList = [6, 10, 14, 18];
+    const timeLimits = [200, 500, 1500, 4000];
+    const maxMovesList = [6, 10, 16, 22];
     const timeLimit = timeLimits[this.difficulty] || 300;
     const deadline = startTime + timeLimit;
     const maxMoves = maxMovesList[this.difficulty] || 10;
@@ -1914,7 +1951,7 @@ class GomokuGame {
     let bestMove = candidates[0];
     let bestScore = -Infinity;
 
-    for (let depth = 1; depth <= (this.difficulty >= 2 ? 4 : 2); depth++) {
+    for (let depth = 1; depth <= (this.difficulty >= 2 ? 6 : 2); depth++) {
       if (Date.now() > deadline) break;
 
       const moves = this._getOrderedMoves(board, aiPlayer, size, 2, maxMoves);
@@ -2019,8 +2056,8 @@ class GomokuGame {
     }
     ctx.stroke();
 
-    // Star points (traditional handicap points)
-    const stars = [[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]];
+    // Star points (dynamic based on board size)
+    const stars = this._getStarPoints(this.gkSize);
     for (const [r, c] of stars) {
       ctx.beginPath(); ctx.arc(tx(c), ty(r), cs * 0.1, 0, Math.PI * 2);
       ctx.fillStyle = '#3d1c00'; ctx.fill();
@@ -2047,6 +2084,14 @@ class GomokuGame {
         if (this.board[r][c] !== 0) this._drawStone(r, c, this.board[r][c]);
       }
     }
+  }
+
+  _getStarPoints(size) {
+    if (size < 9) return [];
+    const edges = [3, Math.floor(size / 2), size - 4];
+    const pts = [];
+    for (const r of edges) { for (const c of edges) { pts.push([r, c]); } }
+    return pts;
   }
 
   _drawStone(row, col, player) {
@@ -2127,6 +2172,14 @@ const IC_PAWN = 0, IC_KNIGHT = 1, IC_BISHOP = 2, IC_ROOK = 3, IC_QUEEN = 4, IC_K
 const IC_WHITE = 0, IC_BLACK = 1;
 const IC_CHARS = ['♙♟','♘♞','♗♝','♖♜','♕♛','♔♚'];
 const IC_VALUES = [100, 320, 330, 500, 900, 20000];
+
+// Piece-square tables (White perspective: row 0 = rank 8, row 7 = rank 1)
+const IC_KNIGHT_PST = [[-50,-40,-30,-30,-30,-30,-40,-50],[-40,-20,0,0,0,0,-20,-40],[-30,0,10,15,15,10,0,-30],[-30,5,15,20,20,15,5,-30],[-30,0,15,20,20,15,0,-30],[-30,5,10,15,15,10,5,-30],[-40,-20,0,5,5,0,-20,-40],[-50,-40,-30,-30,-30,-30,-40,-50]];
+const IC_BISHOP_PST = [[-20,-10,-10,-10,-10,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,10,10,10,10,0,-10],[-10,5,5,10,10,5,5,-10],[-10,0,10,10,10,10,0,-10],[-10,10,10,10,10,10,10,-10],[-10,5,0,0,0,0,5,-10],[-20,-10,-10,-10,-10,-10,-10,-20]];
+const IC_ROOK_PST = [[0,0,0,0,0,0,0,0],[5,10,10,10,10,10,10,5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[0,0,0,5,5,0,0,0]];
+const IC_QUEEN_PST = [[-20,-10,-10,-5,-5,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,5,5,5,5,0,-10],[-5,0,5,5,5,5,0,-5],[0,0,5,5,5,5,0,-5],[-10,5,5,5,5,5,0,-10],[-10,0,5,0,0,0,0,-10],[-20,-10,-10,-5,-5,-10,-10,-20]];
+const IC_KING_MID_PST = [[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-20,-30,-30,-40,-40,-30,-30,-20],[-10,-20,-20,-20,-20,-20,-20,-10],[20,20,0,0,0,0,20,20],[20,30,10,0,0,10,30,20]];
+const IC_PAWN_PST = [[0,0,0,0,0,0,0,0],[50,50,50,50,50,50,50,50],[10,10,20,30,30,20,10,10],[5,5,10,25,25,10,5,5],[0,0,0,20,20,0,0,0],[5,-5,-10,0,0,-10,-5,5],[5,10,10,-20,-20,10,10,5],[0,0,0,0,0,0,0,0]];
 
 class ChessGame {
   constructor(canvas, ctx) {
@@ -2319,8 +2372,24 @@ class ChessGame {
 
   // ── AI ──
   _evaluate(b) {
-    let score=0;
-    for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=b[r][c];if(!p)continue;let v=IC_VALUES[p.type];if(p.type===IC_PAWN){const bonus=p.side===IC_WHITE?((6-r)*5):(r*5);v+=bonus;}score+=p.side===IC_WHITE?v:-v;}
+    let score = 0;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const p = b[r][c];
+        if (!p) continue;
+        let v = IC_VALUES[p.type];
+        const rowIdx = p.side === IC_WHITE ? r : 7 - r;
+        switch (p.type) {
+          case IC_PAWN: v += IC_PAWN_PST[rowIdx][c]; break;
+          case IC_KNIGHT: v += IC_KNIGHT_PST[rowIdx][c]; break;
+          case IC_BISHOP: v += IC_BISHOP_PST[rowIdx][c]; break;
+          case IC_ROOK: v += IC_ROOK_PST[rowIdx][c]; break;
+          case IC_QUEEN: v += IC_QUEEN_PST[rowIdx][c]; break;
+          case IC_KING: v += IC_KING_MID_PST[rowIdx][c]; break;
+        }
+        score += p.side === IC_WHITE ? v : -v;
+      }
+    }
     return score;
   }
 
@@ -2332,8 +2401,9 @@ class ChessGame {
     });
   }
 
-  _minimax(b, depth, alpha, beta, isMax, cr, ep) {
+  _minimax(b, depth, alpha, beta, isMax, cr, ep, deadline) {
     if(depth===0)return this._evaluate(b);
+    if(deadline&&Date.now()>deadline)return this._evaluate(b);
     const curSide=isMax?IC_WHITE:IC_BLACK;
     const all=this._allLegalMoves(b,curSide,cr,ep);
     if(all.length===0){
@@ -2341,8 +2411,8 @@ class ChessGame {
       return 0; // Stalemate
     }
     const ord=this._orderMoves(b,all);
-    if(isMax){let me=-Infinity;for(const m of ord){const s=this._cloneBoard(b);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;if(m.enPassant)s[m.fromRow][m.toCol]=null;me=Math.max(me,this._minimax(s,depth-1,alpha,beta,false,cr,ep));alpha=Math.max(alpha,me);if(beta<=alpha)break;}return me;}
-    else{let me=Infinity;for(const m of ord){const s=this._cloneBoard(b);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;if(m.enPassant)s[m.fromRow][m.toCol]=null;me=Math.min(me,this._minimax(s,depth-1,alpha,beta,true,cr,ep));beta=Math.min(beta,me);if(beta<=alpha)break;}return me;}
+    if(isMax){let me=-Infinity;for(const m of ord){const s=this._cloneBoard(b);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;if(m.enPassant)s[m.fromRow][m.toCol]=null;me=Math.max(me,this._minimax(s,depth-1,alpha,beta,false,cr,ep,deadline));alpha=Math.max(alpha,me);if(beta<=alpha)break;}return me;}
+    else{let me=Infinity;for(const m of ord){const s=this._cloneBoard(b);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;if(m.enPassant)s[m.fromRow][m.toCol]=null;me=Math.min(me,this._minimax(s,depth-1,alpha,beta,true,cr,ep,deadline));beta=Math.min(beta,me);if(beta<=alpha)break;}return me;}
   }
 
   _getAIMove() {
@@ -2350,7 +2420,7 @@ class ChessGame {
     if(all.length===0)return null;
     if(this.difficulty===0){
       const ord=this._orderMoves(this.board,[...all]);
-      const topN=Math.max(3,Math.floor(ord.length*0.3));
+      const topN=Math.max(3,Math.floor(ord.length*0.5));
       return ord[Math.min(Math.floor(Math.random()*topN),ord.length-1)];
     }
     if(this.difficulty===1){
@@ -2363,25 +2433,34 @@ class ChessGame {
       return bm;
     }
     if(this.difficulty===2){
-      let bm=all[0],bs=-Infinity;
-      for(const m of this._orderMoves(this.board,[...all])){
+      const ord=this._orderMoves(this.board,[...all]).slice(0,30);
+      let bm=ord[0],bs=-Infinity;
+      for(const m of ord){
         const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
         if(m.enPassant)s[m.fromRow][m.toCol]=null;
-        const sc=this._minimax(s,2,-Infinity,Infinity,false,this.castlingRights,this.enPassantTarget);
+        const sc=this._minimax(s,3,-Infinity,Infinity,false,this.castlingRights,this.enPassantTarget);
         if(sc>bs){bs=sc;bm=m;}
       }
       return bm;
     }
-    // Expert: depth 3 with pruning
-    const ord=this._orderMoves(this.board,[...all]).slice(0,15);
-    let bm=ord[0],bs=-Infinity;
-    for(const m of ord){
-      const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
-      if(m.enPassant)s[m.fromRow][m.toCol]=null;
-      const sc=this._minimax(s,3,-Infinity,Infinity,false,this.castlingRights,this.enPassantTarget);
-      if(sc>bs){bs=sc;bm=m;}
+    // Master: iterative deepening, 3s time budget, top 20 moves
+    const deadline=Date.now()+3000;
+    const ord=this._orderMoves(this.board,[...all]).slice(0,20);
+    let bestMove=ord[0];
+    for(let depth=1;depth<=6;depth++){
+      if(Date.now()>deadline)break;
+      let bm=ord[0],bs=-Infinity,searched=0;
+      for(const m of ord){
+        if(Date.now()>deadline)break;
+        const s=this._cloneBoard(this.board);s[m.toRow][m.toCol]=s[m.fromRow][m.fromCol];s[m.fromRow][m.fromCol]=null;
+        if(m.enPassant)s[m.fromRow][m.toCol]=null;
+        const sc=this._minimax(s,depth,-Infinity,Infinity,false,this.castlingRights,this.enPassantTarget,deadline);
+        if(sc>bs){bs=sc;bm=m;}
+        searched++;
+      }
+      if(searched>0)bestMove=bm;
     }
-    return bm;
+    return bestMove;
   }
 
   // ── GAME ACTIONS ──
@@ -2560,6 +2639,7 @@ class ChessGame {
     this.aiThinking = true;
     updateUI();
 
+    const delay = this.difficulty >= 2 ? 300 + Math.random() * 200 : 0;
     setTimeout(() => {
       if (this.gameOver) { this.aiThinking = false; updateUI(); return; }
       const move = this._getAIMove();
@@ -3183,7 +3263,7 @@ class GoGame {
     for (let r = 0; r < bs; r++) {
       for (let c = 0; c < bs; c++) {
         if (this.board[r][c] !== 0) {
-          const range = this.difficulty >= 2 ? 2 : 1;
+          const range = this.difficulty >= 3 ? 3 : (this.difficulty >= 2 ? 2 : 1);
           for (let dr = -range; dr <= range; dr++) {
             for (let dc = -range; dc <= range; dc++) {
               const nr = r + dr, nc = c + dc;
@@ -3257,7 +3337,7 @@ class GoGame {
         score += libCount * 3;
       }
 
-      // Expert: evaluate connections and shape
+      // Expert: evaluate connections, shape, and influence
       if (this.difficulty >= 3) {
         let connections = 0;
         for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]]) {
@@ -3269,10 +3349,43 @@ class GoGame {
         score += connections * 4;
         // Penalize isolated stones early
         if (this.moveHistory.length < 10 && connections === 0) score -= 15;
+
+        // Distance-weighted influence from all stones on board
+        let friendlyInfluence = 0, enemyInfluence = 0;
+        for (let rr = 0; rr < bs; rr++) {
+          for (let cc = 0; cc < bs; cc++) {
+            if (this.board[rr][cc] === 0) continue;
+            const dist = Math.abs(r - rr) + Math.abs(c - cc);
+            if (dist === 0) continue;
+            const influence = 1.0 / dist;
+            if (this.board[rr][cc] === player) friendlyInfluence += influence;
+            else enemyInfluence += influence;
+          }
+        }
+        score += (friendlyInfluence - enemyInfluence) * 3;
+
+        // 2-step lookahead: check if placing here leaves a group capturable
+        const sim2 = this.board.map(row => [...row]);
+        sim2[r][c] = player;
+        for (const [dr2, dc2] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]]) {
+          const nr2 = r + dr2, nc2 = c + dc2;
+          if (nr2 >= 0 && nr2 < bs && nc2 >= 0 && nc2 < bs && sim2[nr2][nc2] === 0) {
+            sim2[nr2][nc2] = this.humanColor;
+            for (const [dr3, dc3] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+              const nr3 = nr2 + dr3, nc3 = nc2 + dc3;
+              if (nr3 >= 0 && nr3 < bs && nc3 >= 0 && nc3 < bs &&
+                  sim2[nr3][nc3] === player &&
+                  !this._groupHasLiberty(sim2, nr3, nc3, player)) {
+                score -= this._countGroup(sim2, nr3, nc3, player) * 15;
+              }
+            }
+            sim2[nr2][nc2] = 0;
+          }
+        }
       }
 
-      // Add slight randomness for variety
-      score += Math.random() * 0.5;
+      // Add slight randomness (reduced for higher difficulty)
+      score += Math.random() * (this.difficulty >= 2 ? 0.05 : 0.5);
 
       if (score > bestScore) {
         bestScore = score;
