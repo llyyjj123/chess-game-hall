@@ -121,6 +121,8 @@ body {
 .board-section {
   position: relative;
   flex-shrink: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .board-wrapper {
@@ -1604,12 +1606,12 @@ class GomokuGame {
   }
 
   _calcSizes() {
-    const maxW = Math.min(window.innerWidth - 300, this.gkSize <= 15 ? 560 : 640);
-    const maxH = Math.min(window.innerHeight - 80, this.gkSize <= 15 ? 580 : 640);
-    this.cellSize = Math.floor(Math.min(maxW / (this.gkSize + 0.5), maxH / (this.gkSize + 0.5)));
-    this.cellSize = Math.max(this.cellSize, 20);
-    this.padX = this.cellSize;
-    this.padY = this.cellSize;
+    const maxW = Math.min(window.innerWidth - 320, this.gkSize <= 15 ? 520 : 560);
+    const maxH = Math.min(window.innerHeight - 100, this.gkSize <= 15 ? 560 : 560);
+    this.cellSize = Math.floor(Math.min(maxW / (this.gkSize + 1), maxH / (this.gkSize + 1)));
+    this.cellSize = Math.max(this.cellSize, 18);
+    this.padX = Math.floor(this.cellSize * 0.8);
+    this.padY = Math.floor(this.cellSize * 0.8);
     this.stoneR = Math.floor(this.cellSize * 0.44);
     const bw = (this.gkSize - 1) * this.cellSize + this.padX * 2;
     const bh = (this.gkSize - 1) * this.cellSize + this.padY * 2;
