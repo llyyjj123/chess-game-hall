@@ -958,7 +958,8 @@ class MultiplayerManager {
 
   requestRematch() {
     if (!this.roomId || !this.socket) return;
-    this.socket.emit('rematch-request', { roomId: this.roomId });
+    const winner = activeGame && activeGame.gameOver ? activeGame.getWinnerSide() : null;
+    this.socket.emit('rematch-request', { roomId: this.roomId, winner });
   }
 
   leaveRoom() {
@@ -1582,8 +1583,9 @@ class GomokuGame {
   }
 
   init() {
-    this.board = Array.from({length: GK_SIZE}, () => Array(GK_SIZE).fill(0)); // 0 empty, 1 black, 2 white
-    this.currentPlayer = 1; // 1 = black (player), 2 = white (AI)
+    this.gkSize = 15;
+    this.board = Array.from({length: this.gkSize}, () => Array(this.gkSize).fill(0));
+    this.currentPlayer = 1;
     this.moveHistory = [];
     this.gameOver = false;
     this.gameResult = '';
@@ -1597,18 +1599,18 @@ class GomokuGame {
     this._calcSizes();
     this.render();
     updateUI();
-    this.humanColor = 1; // player is always black
+    this.humanColor = 1;
   }
 
   _calcSizes() {
     const maxW = Math.min(window.innerWidth - 340, 540);
     const maxH = Math.min(window.innerHeight - 140, 600);
-    this.cellSize = Math.floor(Math.min(maxW / (GK_SIZE + 0.5), maxH / (GK_SIZE + 0.5)));
+    this.cellSize = Math.floor(Math.min(maxW / (this.gkSize + 0.5), maxH / (this.gkSize + 0.5)));
     this.padX = this.cellSize;
     this.padY = this.cellSize;
     this.stoneR = Math.floor(this.cellSize * 0.44);
-    const bw = (GK_SIZE - 1) * this.cellSize + this.padX * 2;
-    const bh = (GK_SIZE - 1) * this.cellSize + this.padY * 2;
+    const bw = (this.gkSize - 1) * this.cellSize + this.padX * 2;
+    const bh = (this.gkSize - 1) * this.cellSize + this.padY * 2;
     this.canvas.width = bw;
     this.canvas.height = bh;
     const cs = this.cellSize, px = this.padX, py = this.padY;
@@ -1621,8 +1623,8 @@ class GomokuGame {
     const cs = this.cellSize, px = this.padX, py = this.padY;
     // Find nearest grid point
     let br = -1, bc = -1, bd = Infinity;
-    for (let r = 0; r < GK_SIZE; r++) {
-      for (let c = 0; c < GK_SIZE; c++) {
+    for (let r = 0; r < this.gkSize; r++) {
+      for (let c = 0; c < this.gkSize; c++) {
         const dx = mx - (px + c * cs), dy = my - (py + r * cs);
         const d = Math.sqrt(dx*dx+dy*dy);
         if (d < bd && d < cs * 0.48) { bd = d; br = r; bc = c; }
@@ -1663,8 +1665,8 @@ class GomokuGame {
   }
 
   _isBoardFull() {
-    for (let r = 0; r < GK_SIZE; r++)
-      for (let c = 0; c < GK_SIZE; c++)
+    for (let r = 0; r < this.gkSize; r++)
+      for (let c = 0; c < this.gkSize; c++)
         if (this.board[r][c] === 0) return false;
     return true;
   }
@@ -1677,14 +1679,14 @@ class GomokuGame {
       // Forward
       for (let i = 1; i < 5; i++) {
         const nr = r + dr * i, nc = c + dc * i;
-        if (nr >= 0 && nr < GK_SIZE && nc >= 0 && nc < GK_SIZE && this.board[nr][nc] === player) {
+        if (nr >= 0 && nr < this.gkSize && nc >= 0 && nc < this.gkSize && this.board[nr][nc] === player) {
           count++; cells.push({ row: nr, col: nc });
         } else break;
       }
       // Backward
       for (let i = 1; i < 5; i++) {
         const nr = r - dr * i, nc = c - dc * i;
-        if (nr >= 0 && nr < GK_SIZE && nc >= 0 && nc < GK_SIZE && this.board[nr][nc] === player) {
+        if (nr >= 0 && nr < this.gkSize && nc >= 0 && nc < this.gkSize && this.board[nr][nc] === player) {
           count++; cells.push({ row: nr, col: nc });
         } else break;
       }
@@ -1707,7 +1709,7 @@ class GomokuGame {
     let count = 0, i = 1;
     while (true) {
       const nr = r + dr * i, nc = c + dc * i;
-      if (nr < 0 || nr >= GK_SIZE || nc < 0 || nc >= GK_SIZE || board[nr][nc] !== player) break;
+      if (nr < 0 || nr >= this.gkSize || nc < 0 || nc >= this.gkSize || board[nr][nc] !== player) break;
       count++; i++;
     }
     return count;
@@ -1719,8 +1721,8 @@ class GomokuGame {
     const total = fwd + bwd + 1;
     const fEnd = { r: r + dr * (fwd + 1), c: c + dc * (fwd + 1) };
     const bEnd = { r: r - dr * (bwd + 1), c: c - dc * (bwd + 1) };
-    const fOpen = fEnd.r >= 0 && fEnd.r < GK_SIZE && fEnd.c >= 0 && fEnd.c < GK_SIZE && board[fEnd.r][fEnd.c] === 0;
-    const bOpen = bEnd.r >= 0 && bEnd.r < GK_SIZE && bEnd.c >= 0 && bEnd.c < GK_SIZE && board[bEnd.r][bEnd.c] === 0;
+    const fOpen = fEnd.r >= 0 && fEnd.r < this.gkSize && fEnd.c >= 0 && fEnd.c < this.gkSize && board[fEnd.r][fEnd.c] === 0;
+    const bOpen = bEnd.r >= 0 && bEnd.r < this.gkSize && bEnd.c >= 0 && bEnd.c < this.gkSize && board[bEnd.r][bEnd.c] === 0;
     return { total, openEnds: (fOpen ? 1 : 0) + (bOpen ? 1 : 0) };
   }
 
@@ -1741,8 +1743,8 @@ class GomokuGame {
   _evaluateBoard(board, aiPlayer) {
     const humanPlayer = 3 - aiPlayer;
     let aiScore = 0, humanScore = 0;
-    for (let r = 0; r < GK_SIZE; r++) {
-      for (let c = 0; c < GK_SIZE; c++) {
+    for (let r = 0; r < this.gkSize; r++) {
+      for (let c = 0; c < this.gkSize; c++) {
         if (board[r][c] === aiPlayer) aiScore += this._evaluateCell(r, c, aiPlayer, board);
         else if (board[r][c] === humanPlayer) humanScore += this._evaluateCell(r, c, humanPlayer, board);
       }
@@ -1752,14 +1754,14 @@ class GomokuGame {
 
   _getCandidates(board, range) {
     const candidates = new Set();
-    for (let r = 0; r < GK_SIZE; r++) {
-      for (let c = 0; c < GK_SIZE; c++) {
+    for (let r = 0; r < this.gkSize; r++) {
+      for (let c = 0; c < this.gkSize; c++) {
         if (board[r][c] !== 0) {
           for (let dr = -range; dr <= range; dr++) {
             for (let dc = -range; dc <= range; dc++) {
               const nr = r + dr, nc = c + dc;
-              if (nr >= 0 && nr < GK_SIZE && nc >= 0 && nc < GK_SIZE && board[nr][nc] === 0) {
-                candidates.add(nr * GK_SIZE + nc);
+              if (nr >= 0 && nr < this.gkSize && nc >= 0 && nc < this.gkSize && board[nr][nc] === 0) {
+                candidates.add(nr * this.gkSize + nc);
               }
             }
           }
@@ -1767,7 +1769,7 @@ class GomokuGame {
       }
     }
     if (candidates.size === 0) return [{ row: 7, col: 7 }];
-    return [...candidates].map(k => ({ row: Math.floor(k / GK_SIZE), col: k % GK_SIZE }));
+    return [...candidates].map(k => ({ row: Math.floor(k / this.gkSize), col: k % this.gkSize }));
   }
 
   _scoreCandidate(r, c, aiPlayer, board) {
@@ -1804,14 +1806,14 @@ class GomokuGame {
     };
 
     const checkWin = (b, player) => {
-      for (let r = 0; r < GK_SIZE; r++) {
-        for (let c = 0; c < GK_SIZE; c++) {
+      for (let r = 0; r < this.gkSize; r++) {
+        for (let c = 0; c < this.gkSize; c++) {
           if (b[r][c] !== player) continue;
           for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
             let count = 1;
             for (let i = 1; i < 5; i++) {
               const nr = r + dr*i, nc = c + dc*i;
-              if (nr < 0 || nr >= GK_SIZE || nc < 0 || nc >= GK_SIZE || b[nr][nc] !== player) break;
+              if (nr < 0 || nr >= this.gkSize || nc < 0 || nc >= this.gkSize || b[nr][nc] !== player) break;
               count++;
             }
             if (count >= 5) return true;
@@ -2048,7 +2050,7 @@ class GomokuGame {
 
   applyOpponentMove(data) {
     if (this.gameOver) return;
-    if (data.row < 0 || data.row >= GK_SIZE || data.col < 0 || data.col >= GK_SIZE) return;
+    if (data.row < 0 || data.row >= this.gkSize || data.col < 0 || data.col >= this.gkSize) return;
     if (this.board[data.row][data.col] !== 0) return;
     const oppSide = this.mySide === 'black' ? 2 : 1;
     this._placeStone(data.row, data.col, oppSide);
@@ -2058,7 +2060,7 @@ class GomokuGame {
   }
 
   newGame() {
-    this.board = Array.from({length: GK_SIZE}, () => Array(GK_SIZE).fill(0));
+    this.board = Array.from({length: this.gkSize}, () => Array(this.gkSize).fill(0));
     this.currentPlayer = 1; this.moveHistory = []; this.gameOver = false; this.gameResult = '';
     this.aiThinking = false; this.lastMove = null; this.winningCells = []; this.statusDotClass = 'white';
     this.multiplayer = false; this.mySide = null; this.opponentSide = null;
@@ -2099,9 +2101,9 @@ class GomokuGame {
     // Grid
     ctx.strokeStyle = '#5c3d2e'; ctx.lineWidth = 0.8;
     ctx.beginPath();
-    for (let i = 0; i < GK_SIZE; i++) {
-      ctx.moveTo(tx(0), ty(i)); ctx.lineTo(tx(GK_SIZE - 1), ty(i));
-      ctx.moveTo(tx(i), ty(0)); ctx.lineTo(tx(i), ty(GK_SIZE - 1));
+    for (let i = 0; i < this.gkSize; i++) {
+      ctx.moveTo(tx(0), ty(i)); ctx.lineTo(tx(this.gkSize - 1), ty(i));
+      ctx.moveTo(tx(i), ty(0)); ctx.lineTo(tx(i), ty(this.gkSize - 1));
     }
     ctx.stroke();
 
@@ -2128,8 +2130,8 @@ class GomokuGame {
     }
 
     // Draw stones
-    for (let r = 0; r < GK_SIZE; r++) {
-      for (let c = 0; c < GK_SIZE; c++) {
+    for (let r = 0; r < this.gkSize; r++) {
+      for (let c = 0; c < this.gkSize; c++) {
         if (this.board[r][c] !== 0) this._drawStone(r, c, this.board[r][c]);
       }
     }
@@ -2162,7 +2164,14 @@ class GomokuGame {
   }
 
   getPanelHTML() {
-    return `<div><div class="section-title">难度 · Difficulty</div>
+    return `<div>
+      <div class="section-title">棋盘大小</div>
+      <div class="size-group" id="gkSizeGroup">
+        <button class="size-btn active" data-size="15">15×15</button>
+        <button class="size-btn" data-size="19">19×19</button>
+        <button class="size-btn" data-size="20">20×20</button>
+      </div>
+      <div class="section-title" style="margin-top:12px;">难度 · Difficulty</div>
       <div class="diff-group" id="gkDiffGroup">
         <button class="diff-btn" data-diff="0">😊 简单</button>
         <button class="diff-btn" data-diff="1">🤔 中等</button>
@@ -2181,6 +2190,14 @@ class GomokuGame {
       self.difficulty = parseInt(btn.dataset.diff);
       if (self.moveHistory.length > 0) self.newGame();
     });
+    document.getElementById('gkSizeGroup').addEventListener('click', function(e) {
+      const btn = e.target.closest('.size-btn');
+      if (!btn) return;
+      this.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      self.gkSize = parseInt(btn.dataset.size);
+      self.newGame();
+    });
   }
 
   getStatusText() {
@@ -2195,6 +2212,12 @@ class GomokuGame {
   }
   getHintText() { return '点击交叉点落子 · 黑先 · 五子连珠胜'; }
   getCapturedHTML() { return ''; }
+  getWinnerSide() {
+    if (!this.gameOver) return null;
+    if (this.gameResult.includes('你赢')) return this.mySide;
+    if (this.gameResult.includes('AI获胜') || this.gameResult.includes('对手')) return this.mySide === 'black' ? 'white' : 'black';
+    return null;
+  }
   cleanup() {}
 }
 

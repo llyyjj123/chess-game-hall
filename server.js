@@ -81,18 +81,29 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('opponent-pass');
   });
 
-  socket.on('rematch-request', ({ roomId }) => {
+  socket.on('rematch-request', ({ roomId, winner }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-    socket.to(roomId).emit('rematch-request');
+    room.lastWinner = winner;
+    socket.to(roomId).emit('rematch-request', { winner });
   });
 
   socket.on('rematch-accept', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return;
+
+    // Winner goes first: swap sides
+    if (room.lastWinner) {
+      const tmp = room.host;
+      room.host = room.joiner;
+      room.joiner = tmp;
+    }
+    room.lastWinner = null;
+
     const hostSide = room.host.side;
     const joinerSide = room.joiner ? room.joiner.side : null;
     room.status = 'playing';
+
     socket.to(roomId).emit('rematch-start', { hostSide, joinerSide });
     socket.emit('rematch-start', { hostSide, joinerSide });
   });
