@@ -1,3 +1,9 @@
 node_modules/
 .env
 _query_db.py
+*.docx
+*.log
+.mimocode/
+create-deploy-doc.js
+create-doc.js
+test.js
