@@ -23,6 +23,7 @@ const PORT = process.env.PORT || 3000;
 
 /* ── 可调参数 ── */
 const WAITING_TTL_MS   = 5 * 60 * 1000;   // 等待中的房间多久回收
+const FINISHED_TTL_MS  = 10 * 60 * 1000;  // 已结束的房间多久回收
 const RECONNECT_MS     = 30 * 1000;       // 断线重连宽限期
 const TURN_MS          = 10 * 60 * 1000;  // 每方基础用时（10 分钟包干）
 const MAX_ROOMS        = 1000;            // 全服房间上限
@@ -37,7 +38,13 @@ const FIRST_MOVER = {
   'chess': 'white',
   'go': 'black',
 };
-const OPPOSITE = { red: 'black', black: 'red', white: 'black' };
+// 对手方。必须按棋种区分：中国象棋是「红/黑」，其余三种是「黑/白」。
+// 原先用一张固定的 { red:'black', black:'red', white:'black' } 表，
+// 导致五子棋/围棋的加入者被判成 'red' 而不是 'white'（显示层碰巧蒙对，语义是错的）。
+function oppositeSide(side, gameType) {
+  if (gameType === 'chinese-chess') return side === 'red' ? 'black' : 'red';
+  return side === 'black' ? 'white' : 'black';
+}
 
 function generateRoomId() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -86,6 +93,20 @@ function consumeClock(room, side) {
   return false;
 }
 
+// 销毁房间 —— 必须同时归还该 IP 的建房配额，
+// 否则 roomsByIp 只增不减，同一 IP 建满 MAX_ROOMS_PER_IP 次后永久无法再建房。
+function destroyRoom(roomId, reason) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  if (room.graceTimer) { clearTimeout(room.graceTimer); room.graceTimer = null; }
+  rooms.delete(roomId);
+  if (room.ip) {
+    const n = (roomsByIp.get(room.ip) || 1) - 1;
+    if (n > 0) roomsByIp.set(room.ip, n); else roomsByIp.delete(room.ip);
+  }
+  if (reason) console.log(`[room] ${roomId} destroyed (${reason})`);
+}
+
 io.on('connection', (socket) => {
   console.log(`[+] ${socket.id}`);
 
@@ -103,6 +124,7 @@ io.on('connection', (socket) => {
     const roomId = generateRoomId();
     const room = {
       gameType,
+      ip,
       host: { socketId: socket.id, side: FIRST_MOVER[gameType], playerId: playerId || socket.id },
       joiner: null,
       status: 'waiting',
@@ -132,7 +154,7 @@ io.on('connection', (socket) => {
     if (room.joiner) return cb({ error: '房间已满' });
     if (room.gameType !== gameType) return cb({ error: '游戏类型不匹配' });
 
-    const joinerSide = OPPOSITE[room.host.side];
+    const joinerSide = oppositeSide(room.host.side, room.gameType);
     room.joiner = { socketId: socket.id, side: joinerSide, playerId: playerId || socket.id };
     room.status = 'playing';
     room.turn = room.host.side;      // 由先手方开局
@@ -144,7 +166,8 @@ io.on('connection', (socket) => {
     socket.data.roomId = roomId;
     console.log(`[room] ${roomId} joined by ${socket.id} (side: ${joinerSide})`);
 
-    cb(Object.assign({ roomId, side: joinerSide }, clockPayload(room)));
+    // 直接把对手方一并返回，避免客户端再自己推算（原先客户端手写的映射对五子棋/围棋是错的）
+    cb(Object.assign({ roomId, side: joinerSide, opponentSide: room.host.side }, clockPayload(room)));
     socket.to(roomId).emit('game-start', Object.assign({ opponentSide: joinerSide }, clockPayload(room)));
   });
 
@@ -342,19 +365,16 @@ io.on('connection', (socket) => {
         if (r && r.disconnected) {
           r.status = 'finished';
           io.to(roomId).emit('opponent-left');
-          rooms.delete(roomId);
-          console.log(`[room] ${roomId} destroyed (reconnect timeout)`);
+          destroyRoom(roomId, 'reconnect timeout');
         }
       }, RECONNECT_MS);
       console.log(`[room] ${roomId} ${who} disconnected, grace ${RECONNECT_MS}ms`);
       return;
     }
 
-    if (room.graceTimer) clearTimeout(room.graceTimer);
     room.status = 'finished';
     socket.to(roomId).emit('opponent-left');
-    rooms.delete(roomId);
-    console.log(`[room] ${roomId} destroyed`);
+    destroyRoom(roomId, immediate ? 'left' : 'disconnected');
   }
 
   socket.on('leave-room', () => handleLeave(true));   // 主动离开：立即销毁
@@ -368,9 +388,17 @@ io.on('connection', (socket) => {
 setInterval(() => {
   const now = Date.now();
   for (const [id, room] of rooms) {
+    // 等待中的房间：无人加入
     if (room.status === 'waiting' && now - room.createdAt > WAITING_TTL_MS) {
-      rooms.delete(id);
-      console.log(`[room] ${id} expired (waiting)`);
+      destroyRoom(id, 'waiting expired');
+      continue;
+    }
+    if (room.status !== 'finished') continue;
+    // 已结束的房间：双方都不主动离开的话会一直留着（原先只清 waiting，会内存泄漏）。
+    // 首次看到时打上结束时间戳，之后按 TTL 回收。
+    if (!room.finishedAt) { room.finishedAt = now; continue; }
+    if (now - room.finishedAt > FINISHED_TTL_MS) {
+      destroyRoom(id, 'finished expired');
     }
   }
 }, 60000);

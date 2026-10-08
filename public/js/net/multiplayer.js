@@ -113,12 +113,20 @@ class MultiplayerManager {
     });
 
     // 服务端回执：同步时钟与回合
-    this.socket.on('move-ack', (p) => { this.applyClock(p); updateMPPanel(); });
+    this.socket.on('move-ack', (p) => { this.applyClock(p); this._lastRejected = null; updateMPPanel(); });
 
-    // 走子被服务端拒绝
+    // 走子被服务端拒绝。原先只往控制台打一行日志，玩家看不到任何反馈，
+    // 表现为「点了没反应」—— 这里改成明确提示（同一原因只提示一次，避免刷屏）。
     this.socket.on('move-rejected', ({ reason }) => {
       this.rejected = reason;
       console.warn('[MP] move rejected:', reason);
+      if (this._lastRejected !== reason) {
+        this._lastRejected = reason;
+        const msg = reason === 'not-your-turn' ? '还没轮到你走棋'
+                  : reason === 'bad-seq'      ? '与对手局面不同步，建议退出房间重新开局'
+                  : '走子被服务器拒绝';
+        alert('走子失败：' + msg);
+      }
       updateMPPanel();
     });
 
@@ -183,7 +191,8 @@ class MultiplayerManager {
       activeGame.gameResult = '对手认输，你获胜！';
       activeGame.statusDotClass = 'none';
       Sound.win();
-      this.roomId = null;
+      // 注意：这里**不能**清空 roomId —— 房间还在服务端留着，
+      // 清空后「再来一局」按钮的显示条件 mp.roomId 不成立，就再也没法发起重赛了。
       updateMPPanel();
       activeGame.render();
       updateUI();
@@ -235,6 +244,7 @@ class MultiplayerManager {
 
   /* ── 房间操作 ── */
   createRoom(gameType) {
+    if (this.roomId) return;              // 防连点：已在房间里就不要再建一个，否则旧房间会被遗弃
     this.connect();
     this.gameType = gameType;
     this.socket.emit('create-room', { gameType, playerId: getPlayerId() }, (res) => {
@@ -254,7 +264,8 @@ class MultiplayerManager {
       if (!res || res.error) { alert((res && res.error) || '加入失败'); return; }
       this.roomId = res.roomId;
       this.mySide = res.side;
-      this.oppSide = res.side === 'red' ? 'black' : res.side === 'black' ? 'red' : res.side === 'white' ? 'black' : 'white';
+      // 对手方由服务端下发，不再在客户端手写映射（原先对五子棋/围棋是错的）
+      this.oppSide = res.opponentSide;
       this.applyClock(res);
       if (activeGame) {
         activeGame.multiplayer = true;

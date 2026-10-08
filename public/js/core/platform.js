@@ -18,6 +18,12 @@ function registerGame(id, GameClass) {
 
 function switchGame(gameId) {
   if (activeGameId === gameId) return;
+  // 联机对局中切换棋种必须退出房间：否则你还留在房间里，但 activeGame 已经换成别的棋种，
+  // 对手那边仍在下原来的棋 —— 双方棋盘错位，而且对手完全不知道你切走了。
+  if (typeof mp !== 'undefined' && mp.roomId) {
+    if (!confirm('你正在联机对局中，切换棋种将退出房间并通知对手。确定吗？')) return;
+    mp.leaveRoom();
+  }
   if (activeGame && activeGame.reviewing) activeGame.exitReview();   // 切换前退出复盘，避免留下历史局面
   if (activeGame && activeGame.cleanup) activeGame.cleanup();
 
