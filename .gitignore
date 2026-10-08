@@ -7,3 +7,20 @@ _query_db.py
 create-deploy-doc.js
 create-doc.js
 test.js
+
+# ── 以下为 2026-10 改造时补充的防御性规则 ──
+
+# 部署备份包
+*.tar.gz
+*.tgz
+
+# 编辑器 / 系统垃圾
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 临时调试脚本（本轮改造中产生过 _mp_test.js / _t_rules.js / _v.html 等）
+_*.js
+_*.html
+_*.css
