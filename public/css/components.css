@@ -1,0 +1,375 @@
+/* ===================================================================
+   components.css — 标签页、状态条、按钮、选择器、棋谱、吃子、联机、弹窗
+   简约化要点：
+     · 全部改用 1px 描边 + 扁平表面，删除 glow / 渐变
+     · 统一使用 --r-sm/md 圆角与 --sp-* 间距标尺
+     · 强调色只保留 --accent 一支，克制使用
+   =================================================================== */
+
+/* ── Game Tabs ── */
+.game-tabs {
+  display: flex;
+  gap: var(--sp-1);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-1);
+  margin-bottom: var(--sp-4);
+  width: 100%;
+  max-width: 1200px;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.tab-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.tab-btn:hover { color: var(--text); background: var(--surface-3); }
+.tab-btn.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 500;
+}
+
+/* ── Status Bar ── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.status-dot.red   { background: var(--piece-red); }
+.status-dot.black { background: #4a5a6a; }
+.status-dot.white { background: #fff; border: 1px solid var(--border-strong); }
+.status-dot.none  { background: transparent; border: 1px dashed var(--border-strong); }
+
+.status-text { font-size: var(--fs-md); font-weight: 500; color: var(--text); }
+
+.section-title {
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-3);
+  letter-spacing: 1.5px;
+  margin-bottom: var(--sp-2);
+}
+
+/* ── Buttons ── */
+.btn-row { display: flex; gap: var(--sp-2); }
+
+.btn {
+  flex: 1;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease),
+              border-color var(--dur) var(--ease);
+}
+.btn:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-3); }
+.btn:active { transform: scale(.985); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.btn.primary:hover { filter: brightness(1.06); }
+
+/* ── 分段选择器（难度 / 棋盘尺寸 / 联机模式共用） ── */
+.diff-group, .size-group, .mp-toggle {
+  display: flex;
+  gap: var(--sp-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--sp-1);
+}
+
+.diff-btn, .size-btn, .mp-btn {
+  flex: 1;
+  padding: var(--sp-2) var(--sp-1);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.diff-btn:hover, .size-btn:hover, .mp-btn:hover { color: var(--text); background: var(--surface-3); }
+
+.diff-btn.active, .size-btn.active, .mp-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Move Log ── */
+.move-log-container {
+  flex: 1;
+  min-height: 88px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.move-log-title {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  letter-spacing: 1.5px;
+  margin-bottom: var(--sp-2);
+}
+
+.move-log-list {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 3px var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.move-log-num   { color: var(--text-3); }
+.move-log-red   { color: var(--piece-red); }
+.move-log-black { color: var(--text-2); }
+
+.move-hint {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ── Captured pieces ── */
+.captured-section { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.captured-group {
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.captured-label {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--fs-xs); color: var(--text-3); margin-bottom: var(--sp-2);
+}
+.captured-label .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.captured-label .dot.red-dot   { background: var(--piece-red); }
+.captured-label .dot.black-dot { background: #4a5a6a; }
+
+.captured-pieces { display: flex; flex-wrap: wrap; gap: var(--sp-1); min-height: 24px; align-items: center; }
+
+.captured-piece {
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-piece);
+  font-size: var(--fs-md);
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  animation: popIn .25s var(--ease);
+}
+.captured-piece.red-piece   { color: var(--piece-red); }
+.captured-piece.black-piece { color: #6b7f92; }
+
+/* 空占位（替代原先硬编码的 #666） */
+.empty-hint { font-size: var(--fs-xs); color: var(--text-3); }
+
+/* ── Review bar ── */
+.review-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.review-btn {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.review-btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.review-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.review-pos {
+  flex: 1;
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.review-pos.active { color: var(--accent); }
+
+/* ── Pass button ── */
+.small-btn {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.small-btn:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* ── Multiplayer ── */
+.mp-room-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.mp-input {
+  width: 100%;
+  padding: var(--sp-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-md);
+  text-align: center;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.mp-input::placeholder { color: var(--text-3); letter-spacing: 1px; text-transform: none; }
+.mp-input:focus { outline: none; border-color: var(--accent); }
+
+.mp-room-code {
+  padding: var(--sp-3) 0;
+  text-align: center;
+  font-size: var(--fs-2xl);
+  font-weight: 500;
+  letter-spacing: 8px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.mp-status { font-size: var(--fs-sm); color: var(--text-3); text-align: center; }
+.mp-status.waiting   { color: var(--warn); }
+.mp-status.connected { color: var(--success); }
+
+.mp-divider {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* ── 对局计时 ── */
+.mp-clocks {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.mp-clock {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-2);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.mp-clock-label { font-size: var(--fs-xs); color: var(--text-3); }
+.mp-clock-time {
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+/* 轮到该方走棋时高亮 */
+.mp-clock.active { border-color: var(--accent); }
+.mp-clock.active .mp-clock-time { color: var(--accent); }
+/* 剩余不足 30 秒转红 */
+.mp-clock.low .mp-clock-time { color: var(--danger); }
+
+/* ── Captured section for Intl Chess ── */
+.captured-intl { display: flex; flex-wrap: wrap; gap: 3px; min-height: 20px; }
+.captured-intl span { font-size: var(--fs-lg); color: var(--text-2); }
+
+/* ── Promotion dialog ── */
+#overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .5);
+  z-index: 99;
+}
+
+#promotionDialog {
+  display: none;
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  padding: var(--sp-5);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  z-index: 100;
+}
+#promotionDialog h3 {
+  margin-bottom: var(--sp-4);
+  text-align: center;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--text);
+}
+#promotionDialog .promo-options { display: flex; gap: var(--sp-2); justify-content: center; }
+#promotionDialog .promo-btn {
+  width: 48px; height: 48px;
+  font-size: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+#promotionDialog .promo-btn:hover { background: var(--accent-soft); border-color: var(--accent); }

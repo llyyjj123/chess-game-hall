@@ -1,0 +1,35 @@
+/* ===================================================================
+   responsive.css — 断点覆盖
+   ⚠️ 必须最后加载：本文件覆盖 layout/components 中的同名声明，
+   提前加载会被反向覆盖。
+   =================================================================== */
+
+@media (max-width: 900px) {
+  .main-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-5);
+    padding: var(--sp-4);
+  }
+
+  /* .board-section 默认 flex:1 1 auto，纵向排列下宽度会退化成
+     fit-content，而它的内容（canvas）宽度又由它自己决定 —— 循环依赖
+     会让 availableBoardSize() 量到偏小的不稳定值。显式撑满即打破循环。 */
+  .board-section { width: 100%; }
+
+  .panel {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: none;
+    padding-left: 0;
+    padding-top: var(--sp-5);
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .app-header { flex-direction: column; align-items: flex-start; gap: var(--sp-3); }
+  .app-title { font-size: 22px; }
+
+  .game-tabs { flex-wrap: wrap; }
+  .tab-btn { flex: 1 1 40%; }
+}

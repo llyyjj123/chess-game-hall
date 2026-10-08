@@ -1,0 +1,58 @@
+/* ===================================================================
+   layout.css — 主容器、棋盘区、侧栏
+   简约化：1px 描边替代多层发光阴影，用间距标尺拉开留白。
+   =================================================================== */
+
+.main-container {
+  display: flex;
+  gap: var(--sp-5);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  max-width: 1200px;
+  width: 100%;
+  animation: fadeIn .4s var(--ease);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.board-section {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.board-wrapper {
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  border: 1px solid var(--board-frame);
+  line-height: 0;
+}
+
+canvas { display: block; cursor: pointer; max-width: 100%; height: auto; }
+
+/* ── 侧栏 ── */
+.panel {
+  flex: 0 0 264px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+  max-height: 620px;
+  overflow-y: auto;
+  padding-left: var(--sp-5);
+  border-left: 1px solid var(--border);
+}
+
+/* 细滚动条，避免默认样式打断简约感 */
+.panel::-webkit-scrollbar,
+.move-log-container::-webkit-scrollbar { width: 6px; }
+.panel::-webkit-scrollbar-thumb,
+.move-log-container::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: 3px;
+}
+.panel::-webkit-scrollbar-track,
+.move-log-container::-webkit-scrollbar-track { background: transparent; }

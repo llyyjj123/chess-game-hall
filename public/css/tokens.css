@@ -1,0 +1,88 @@
+/* ===================================================================
+   tokens.css — 设计变量
+   现代 + 简约方向：统一标尺、单一强调色、扁平表面、去掉发光。
+   主题通过 <html data-theme="dark|light"> 切换，默认深色。
+   =================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+
+:root {
+  /* ── 字体：控件用无衬线，标题用书法体，棋子用楷体 ── */
+  --font-ui: 'Noto Sans SC', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-title: 'Ma Shan Zheng', 'KaiTi', 'STKaiti', serif;
+  --font-piece: 'KaiTi', 'STKaiti', 'Noto Serif SC', serif;
+
+  /* ── 字号标尺 ── */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 19px;
+  --fs-2xl: 26px;
+
+  /* ── 间距标尺 ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* ── 圆角标尺 ── */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+
+  /* ── 动效 ── */
+  --ease: cubic-bezier(.2, .8, .3, 1);
+  --dur: 160ms;
+
+  /* ── 棋盘配色（两套主题共用木色棋盘） ── */
+  --board-bg: #e5cd9c;
+  --board-line: #9a7848;
+  --board-frame: #2a2118;
+  --piece-face: #fdfaf2;
+  --piece-red: #b8422f;
+  --piece-black: #2f3a45;
+}
+
+/* ── 深色主题（默认） ── */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121110;
+  --surface-1: #1a1816;
+  --surface-2: #221f1b;
+  --surface-3: #2b2721;
+  --border: #302b25;
+  --border-strong: #443c32;
+  --text: #ece6dc;
+  --text-2: #a1968a;
+  --text-3: #6e655b;
+  --accent: #c9a961;
+  --accent-soft: rgba(201, 169, 97, .12);
+  --accent-ink: #1a1816;
+  --danger: #d0563f;
+  --success: #6aa878;
+  --warn: #d59b4a;
+}
+
+/* ── 浅色主题 ── */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f3ed;
+  --surface-1: #ffffff;
+  --surface-2: #faf8f4;
+  --surface-3: #efeae1;
+  --border: #e3ddd2;
+  --border-strong: #cdc3b4;
+  --text: #23201b;
+  --text-2: #6d6459;
+  --text-3: #9c928a;
+  --accent: #8a6a2f;
+  --accent-soft: rgba(138, 106, 47, .10);
+  --accent-ink: #ffffff;
+  --danger: #b8422f;
+  --success: #4a7c52;
+  --warn: #a8762c;
+}

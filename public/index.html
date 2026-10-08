@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>棋类游戏大厅</title>
+<script>
+  // 在样式加载前定主题，避免刷新时闪白
+  try {
+    var t = localStorage.getItem('chess-theme');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
+      document.documentElement.dataset.theme = 'light';
+  } catch (e) {}
+</script>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+<script src="/socket.io/socket.io.js"></script>
+
+<header class="app-header">
+  <div>
+    <div class="app-title">棋类游戏大厅</div>
+    <div class="app-subtitle">象棋 · 五子棋 · 国际象棋 · 围棋</div>
+  </div>
+  <div class="app-actions">
+    <button class="icon-toggle" id="soundToggle" type="button" title="开关音效">
+      <span id="soundLabel">音效开</span>
+    </button>
+    <button class="theme-toggle" id="themeToggle" type="button" title="切换主题">
+      <span class="swatch"></span>
+      <span id="themeLabel">深色</span>
+    </button>
+  </div>
+</header>
+
+<nav class="game-tabs" id="gameTabs">
+  <button class="tab-btn active" data-game="chinese-chess">象棋</button>
+  <button class="tab-btn" data-game="gomoku">五子棋</button>
+  <button class="tab-btn" data-game="chess">国际象棋</button>
+  <button class="tab-btn" data-game="go">围棋</button>
+</nav>
+
+<div class="main-container">
+  <div class="board-section">
+    <div class="board-wrapper">
+      <canvas id="boardCanvas"></canvas>
+    </div>
+  </div>
+
+  <aside class="panel" id="sidePanel">
+    <div class="status-bar">
+      <div class="status-dot red" id="statusDot"></div>
+      <span class="status-text" id="statusText">红方走棋</span>
+    </div>
+
+    <div id="panelControls">
+      <!-- Game-specific controls injected here -->
+    </div>
+
+    <div class="move-log-container">
+      <div class="move-log-title">棋谱记录</div>
+      <div class="move-log-list" id="moveLog"></div>
+    </div>
+
+    <div class="review-bar">
+      <button class="review-btn" id="btnRevPrev" type="button" title="上一步">◀</button>
+      <span class="review-pos" id="reviewPos">实时</span>
+      <button class="review-btn" id="btnRevNext" type="button" title="下一步">▶</button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="btnNewGame">新游戏</button>
+      <button class="btn" id="btnUndo">悔棋</button>
+    </div>
+
+    <div class="btn-row" id="extraActions"></div>
+
+    <div class="captured-section" id="capturedArea"></div>
+
+    <div class="move-hint" id="moveHint">点击己方棋子选中 · 点击目标位置走棋</div>
+  </aside>
+</div>
+
+<!-- Promotion dialog for international chess -->
+<div id="overlay"></div>
+<div id="promotionDialog">
+  <h3>兵升变 — 选择棋子</h3>
+  <div class="promo-options" id="promoOptions"></div>
+</div>
+
+<script src="js/core/framework.js"></script>
+<script src="js/core/prefs.js"></script>
+<script src="js/core/sound.js"></script>
+<script src="js/core/anim.js"></script>
+<script src="js/core/platform.js"></script>
+<script src="js/core/events.js"></script>
+<script src="js/core/theme.js"></script>
+<script src="js/net/multiplayer.js"></script>
+<script src="js/games/chinese-chess.js"></script>
+<script src="js/games/gomoku.js"></script>
+<script src="js/games/chess.js"></script>
+<script src="js/games/go.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>
